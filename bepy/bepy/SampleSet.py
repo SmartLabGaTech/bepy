@@ -22,7 +22,7 @@ class SampleSet:
 
     def __init__(self, gridsize=None):
         self._samples = {}
-        self._analysis = Analysis()
+        self._analysis = 0
 
         if gridsize is None:
             self._gridsize = 0
@@ -90,12 +90,12 @@ class SampleSet:
         temptList=[]
         
         for samp in mapframe.index.levels[0]:
-            temptList = mapframe.unstack().xs(samp).unstack().T
-            test.append(temptList)
+            tempframe = mapframe.unstack().xs(samp).unstack().T
+            temptList.append(tempframe)
         
-        newmaps = pd.concat(test,keys=(mapframe.index.levels[0]),axis=1)
+        newmaps = pd.concat(temptList,keys=(mapframe.index.levels[0]),axis=1)
 
-        results = Analysis(model=model, fitted=fitted, comps=compframe, maps=newmaps, gridSize=self._gridsize)
+        results = Analysis.Analysis(model=model, fitted=fitted, comps=compframe, maps=newmaps, gridSize=self._gridsize)
 
         self._analysis = results
 
