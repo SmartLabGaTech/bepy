@@ -2,20 +2,28 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
-from typing import Any, Union
+from bepy import OtherFunctions
 
-#implement the data structure
 
-class BEData:
+# Implement the data structure
+class BaseMeasurement:
 
+    # Store parameters of the measurement
     @property
     def params(self):
         return
 
+    # Store flags identifying bad chirps
     @property
     def flags(self):
         return
-    
+
+    # Store flags identifying bad acquisitions
+    @property
+    def acq_flags(self):
+        return
+
+    # Store actual data
     @property
     def data(self):
         return
@@ -26,36 +34,39 @@ class BEData:
             self._data = 0
             self._params = 0
             self._flags = 0
+            self._acq_flags = 0
         else:
-            data = shodata[["Amp","errA","Phase","errP","Res","errRes","Q","errQ"]].unstack()
             self._params = parameters.transpose()
             
             temp_plotgroup = shodata["PlotGroup"].xs(0)
             in_out = shodata['InOut'].unstack().xs(0)
             self._flags = shodata['Flag'].unstack()
             
-            data = shodata[["Amp","errA","Phase","errP","Res","errRes","Q","errQ"]].unstack()
+            data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ"]].unstack()
 
             data = data.transpose()
-            data['InOut']= np.tile(in_out.values,8)
+            data['InOut'] = np.tile(in_out.values, 8)
             data.set_index('InOut', append=True, inplace=True)
 
-            data['PlotGroup']= np.tile(temp_plotgroup.values,8)
+            data['PlotGroup'] = np.tile(temp_plotgroup.values, 8)
             data.set_index('PlotGroup', append=True, inplace=True)
             
             if xaxis is not None:
-                data['xaxis']= np.tile(xaxis.values,8)
+                data['xaxis'] = np.tile(xaxis.values, 8)
                 data.set_index('xaxis', append=True, inplace=True)
             
             data = data.transpose()
             
             self._data = data
     
-    def GetDataSubset(self, inout=0.0, plotGroup=None, insert=None, stack=['Amp', 'Phase', 'Res', 'Q']):
+    def GetDataSubset(self, inout=0.0, plotGroup=None, insert=None, stack=None, clean=False):
         
         inout_vals=self._data.columns.get_level_values(level='InOut')
         plotGroup_vals=self._data.columns.get_level_values(level='PlotGroup')
-        
+
+        if stack is None:
+            stack = ['Amp', 'Phase', 'Res', 'Q']
+
         if inout is None:
             inout_mask = np.ones(inout_vals.shape)
         else:
@@ -66,22 +77,47 @@ class BEData:
         else:
             pg_mask = plotGroup_vals == plotGroup
             
-        mask = np.logical_and(inout_mask,pg_mask)
-        
-        if insert is None:
-            return self._data.T[mask].T[stack]
+        mask = np.logical_and(inout_mask, pg_mask)
+
+        if clean:
+            cleanmask = self._acq_flags
         else:
-            return_data = copy.deepcopy(self._data)
+            cleanmask = np.full(self._acq_flags.shape, False)
+
+        return_data = copy.deepcopy(self._data)
+        return_data = return_data[~cleanmask]
+
+        if insert is None:
+            return return_data.T[mask].T[stack]
+        else:
             return_data.T[mask] = insert
             return return_data[stack]
-    
 
-#Implement tha base measurement class
-class BaseMeasurement(BEData):
-    pass
+    def clean(self, sensitivity=3, var=None, plot=False):
+
+        if var is None:
+            var = ['Amp', 'Phase', 'Q', 'Res', 'errA', 'errP', 'errQ', 'errRes']
+
+        outflags = np.full(self._data[var].values.shape,False)
+
+        mask = self._data[var].columns.get_level_values(level='InOut') ==0.0
+        oodata = self._data[var].T[mask].T.values
+        indata = self._data[var].T[~mask].T.values
+
+        outflags[:, mask] = OtherFunctions.cleanbychirp(oodata, sensitivity)
+        outflags[:, ~mask] = OtherFunctions.cleanbychirp(indata, sensitivity)
+
+        if plot:
+            plt.imshow(outflags, cmap='binary')
+            plt.show()
+
+        self._flags = pd.DataFrame(outflags, index=self._data[var].index, columns=self._data[var].columns)
+        self._acq_flags = OtherFunctions.collapseflags(self._flags)
+
+        return self._acq_flags
 
 
-#Implement Grid and Line measurements
+# Implement Grid and Line measurements
 class GridMeasurement(BaseMeasurement):
 
     _acqXaxis = None  # type: np.array()
@@ -180,16 +216,16 @@ class LineMeasurement(BaseMeasurement):
     def measurementName(self):
         return
     
-    def __init__(self, path = None):
+    def __init__(self, path=None, name='Scan'):
 
         shodata = pd.read_csv(path + 'shofit.csv', index_col=[0, 1])
         parameters = pd.read_csv(path + 'parameters.csv', header=None, index_col=0)
 
         BaseMeasurement.__init__(self, shodata, parameters, xaxis=None)
 
-        self._measurementName = 'Scan'
+        self._measurementName = name
 
-    def plot(self, variables=None, removeFlagged = False, fold = False, lims = None, saveName=None):
+    def plot(self, variables=None, fold = False, lims = None, saveName=None, clean=False, plotgroup=None):
 
         if variables is None:
             variables = ['Amp', 'Phase', 'Res', 'Q']
@@ -203,13 +239,27 @@ class LineMeasurement(BaseMeasurement):
         else:
             cols = numVars
 
+        subset = self.GetDataSubset(plotGroup=plotgroup)
+
         for i in np.arange(0, numVars):
 
             var = variables[i]
 
-            data = self._data[var]
+            data = subset
 
-            plotdata = data.values
+            data = data[var]
+
+            if clean:
+                plotdata = copy.deepcopy(data.values)
+                cleanflags = self._flags
+
+                if plotgroup is not None:
+                    pg_mask = self._data.columns.get_level_values(level='PlotGroup') == plotgroup
+
+                cleanflags = cleanflags.T[pg_mask].T
+                plotdata[cleanflags[var].values] = np.inf
+            else:
+                plotdata = data.values
 
             if fold:
                 imRows = np.shape(plotdata)[0]
@@ -220,9 +270,6 @@ class LineMeasurement(BaseMeasurement):
                 new_plotdata[::2,:] = top
                 new_plotdata[1::2,:] = bottom
                 plotdata = new_plotdata
-
-            if removeFlagged:
-                plotdata[self._flags.values.astype(bool)] = np.inf
                 
             if lims is None:
                 minimum = np.min(plotdata)
@@ -234,8 +281,11 @@ class LineMeasurement(BaseMeasurement):
             if var == 'Res':
                 plotdata = np.divide(plotdata, 1000000)
 
+            if var == 'Phase':
+                plotdata = np.multiply(plotdata, 180/np.pi)
+
             sub = plt.subplot(rows, cols, i + 1)
-            plot = sub.imshow(plotdata, cmap='nipy_spectral', vmin=minimum, vmax=maximum)
+            plot = sub.imshow(plotdata, cmap='jet', vmin=minimum, vmax=maximum)
 
             plt.colorbar(plot, ax=sub)
 

@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import sklearn.decomposition as learn
-from bepy import LineMeasurement, GridMeasurement, Sample, BEData
+
 
 class Analysis():
 
@@ -26,13 +25,18 @@ class Analysis():
     def gridsize(self):
         return
 
-    def __init__(self, model=None, fitted=None, comps=None, maps=None, gridSize=50):
+    @property
+    def samp_flags(self):
+        return
+
+    def __init__(self, model=None, fitted=None, comps=None, maps=None, gridSize=50, samp_flags=None):
         self._gridsize = gridSize
         self._model = model
         self._fitted = fitted
 
         self._maps = maps
         self._comps = comps
+        self._samp_flags = samp_flags
 
     def plot(self, spacer=None):
 
@@ -50,12 +54,19 @@ class Analysis():
 
             j = 0
 
+            flags = self._samp_flags[samp]
+            grid = self._gridsize[samp]
+
             for comp in self._maps[samp]:
 
-                mapdata = np.reshape(self._maps[samp][comp].values,[self._gridsize,self._gridsize])
+                newmap = np.empty(flags.shape)
+                newmap[flags] = np.inf
+                newmap[~flags] = self._maps[samp][comp].values
+
+                mapdata = np.reshape(newmap, [grid, grid])
 
                 sub = plt.subplot(plotrows, plotcols, i + j)
-                plot = sub.imshow(mapdata, cmap='nipy_spectral')
+                plot = sub.imshow(mapdata, cmap='jet')
                 plt.colorbar(plot, ax=sub)
 
                 if j == 0:
