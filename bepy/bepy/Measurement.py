@@ -124,6 +124,18 @@ class BaseMeasurement:
 
         return self._acq_flags
 
+    def export(self, inout=[0,1], plotgroups=[0], saveName=None):
+        for i in inout:
+            pg_data = []
+            for pg in plotgroups:
+                temp = self.GetDataSubset(inout=i, plotGroup=pg, stack=['Amp', 'Phase', 'Res', 'Q', 'errA', 'errP', 'errRes', 'errQ'])
+                pg_data.append(temp)
+            allData = pd.concat(pg_data, axis=1)
+
+            if saveName is None:
+                allData.to_csv('export_InOut_'+str(i)+'.csv')
+            else:
+                allData.to_csv(saveName+'_' + str(i) + '.csv')
 
 # Implement Grid and Line measurements
 class GridMeasurement(BaseMeasurement):
