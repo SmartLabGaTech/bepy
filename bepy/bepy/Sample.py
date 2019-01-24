@@ -19,16 +19,16 @@ class Sample:
     def meas_acq_flags(self):
         return
 
-    def __init__(self, path=None, gridSize=50):
+    def __init__(self, path=None, gridSize=50, adjustphase=True):
 
         self._linemeasurements = {}
         self._gridmeasurements = {}
         self._meas_acq_flags = {}
 
         if path is not None:
-            self.addentiresample(path, gridSize)
+            self.addentiresample(path, gridSize, adjustphase)
 
-    def addmeasurement(self, meas, measType=None, gridSize=None):
+    def addmeasurement(self, meas, measType=None, gridSize=None, adjustphase=True):
 
         if measType is None:
             measType = meas._measurementName
@@ -44,14 +44,14 @@ class Sample:
         else:
             if measType in ['Vert', 'Lat']:
                 try:
-                    newMeas = LineMeasurement(meas)
+                    newMeas = LineMeasurement(meas, adjustphase=adjustphase)
                 except ValueError:
                     raise ValueError('Argument is not a path to measurement data. Maybe its a Measurement Object?')
                 meas_flags = newMeas.clean()
                 self._linemeasurements[measType] = newMeas
             elif measType in ['SSPFM', 'NonLin', 'Relax']:
                 try:
-                    newMeas = GridMeasurement(meas, measType, gridSize)
+                    newMeas = GridMeasurement(meas, measType, gridSize, adjustphase=adjustphase)
                 except ValueError:
                     raise ValueError('Argument is not a path to measurement data. Maybe its a Measurement Object?')
                 meas_flags = newMeas.clean()
@@ -61,13 +61,13 @@ class Sample:
 
         self._meas_acq_flags[measType] = meas_flags
 
-    def addentiresample(self, path, gridSize=50):
+    def addentiresample(self, path, gridSize=50, adjustphase=True):
 
         foldernames={'BELine': 'Vert', 'BEScan': 'Vert', 'BELat': 'Lat', 'Relax': 'Relax', 'SSPFM': 'SSPFM', 'NonLin': 'NonLin'}
 
         for name in foldernames:
             if os.path.isdir(path+name):
-                self.addmeasurement(path+name+'/', measType=foldernames[name], gridSize=gridSize)
+                self.addmeasurement(path+name+'/', measType=foldernames[name], gridSize=gridSize, adjustphase=adjustphase)
 
     def GetMeasStack(self, measstack = None, varstack = ['Amp', 'Phase', 'Res', 'Q'], inout=0.0, plotGroup=None,
                      insert=None, clean=False):

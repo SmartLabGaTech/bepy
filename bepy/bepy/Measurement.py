@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FFMpegWriter
 import copy
 from bepy import OtherFunctions
 
@@ -28,7 +29,7 @@ class BaseMeasurement:
     def data(self):
         return
 
-    def __init__(self, shodata=None, parameters=None, xaxis=None):
+    def __init__(self, shodata=None, parameters=None, xaxis=None, adjustphase=True):
 
         if shodata is None:
             self._data = 0
@@ -43,6 +44,13 @@ class BaseMeasurement:
             self._flags = shodata['Flag'].unstack()
             
             data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ"]].unstack()
+
+            if adjustphase:
+                phaseMean = data['Phase'].fillna(0).mean().mean()
+                data['Phase'] = data['Phase'] - phaseMean
+
+                data['Phase'] = data['Phase'].applymap(lambda x: (x - 2*np.pi) if x > np.pi else x)
+                data['Phase'] = data['Phase'].applymap(lambda x: (x + 2 * np.pi) if x < -np.pi else x)
 
             data = data.transpose()
             data['InOut'] = np.tile(in_out.values, 8)
@@ -134,7 +142,7 @@ class GridMeasurement(BaseMeasurement):
     def acqXaxis(self):
         return
 
-    def __init__(self, path=None, measType='SSPFM', gridSize=10):
+    def __init__(self, path=None, measType='SSPFM', gridSize=10, adjustphase=True):
 
         shodata = pd.read_csv(path + 'shofit.csv', index_col=[0, 1])
         parameters = pd.read_csv(path + 'parameters.csv', header=None, index_col=0)
@@ -146,15 +154,18 @@ class GridMeasurement(BaseMeasurement):
         elif measType == 'Relax':
             self._acqXaxis = (shodata['Multiplier'].xs(0).index)*float(parameters.xs('Chirp Duration').values[0])
         
-        BaseMeasurement.__init__(self, shodata, parameters, xaxis=self._acqXaxis)
+        BaseMeasurement.__init__(self, shodata, parameters, xaxis=self._acqXaxis, adjustphase=adjustphase)
 
         self._measurementName = measType
         self._gridSize = gridSize
 
-    def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, saveName=None):
+    def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, plotmap=False ,saveName=None):
 
         if variables is None:
             variables = ['Amp', 'Phase', 'Res', 'Q']
+
+        if type(pointNum) is tuple:
+            pointNum = (pointNum[0]-1)*self._gridSize + pointNum[1]
 
         subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup, insert=insert)
         
@@ -209,6 +220,124 @@ class GridMeasurement(BaseMeasurement):
 
         plt.show()
 
+    def imslice(self, variables=None, sliceNum=None, InOut=0.0, plotgroup=None, saveName=None, limits=None):
+
+        #none means standard variables
+        if variables is None:
+            variables = ['Amp', 'Phase', 'Res', 'Q']
+
+        numVars = len(variables)
+
+        #plot subset
+        subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup)
+
+        if numVars > 2:
+            totalrows = 3
+        else:
+            totalrows = 2
+
+        totalcols = int(np.floor((numVars+1)/2))
+
+        for i in np.arange(0, numVars):
+
+            var = variables[i]
+
+            row = i % 2
+            col = int(np.floor(i/2))
+
+            data = subset[var]
+            xaxis = data.columns.get_level_values('xaxis')
+
+            if var == 'Res':
+                data = np.divide(data, 1000)
+                ylabel = var + ' (kHz)'
+            elif var == 'Amp':
+                ylabel = var + r' ($\mu$V)'
+            elif var == 'Phase':
+                data = data * (180/(np.pi))
+                ylabel = var + r' ($\degree$)'
+            elif var == 'Q':
+                ylabel = var
+
+            plotdata = data.values.reshape((self._gridSize, self._gridSize, -1))
+
+            sub = plt.subplot2grid((totalrows, totalcols), (row, col))
+
+            if limits is not None:
+                plot = sub.imshow(plotdata[:, :, sliceNum], cmap='nipy_spectral', vmin=limits[i][0], vmax=limits[i][1])
+            else:
+                plot = sub.imshow(plotdata[:, :, sliceNum], cmap='nipy_spectral')
+
+            sub.set_title(ylabel)
+            plt.colorbar(plot, ax=sub)
+
+        sub = plt.subplot2grid((totalrows, totalcols), (totalrows-1, 0), colspan=totalcols)
+        sub.plot(xaxis, 'b')
+        sub.plot(sliceNum, xaxis[sliceNum], 'ro')
+        sub.set_ylabel('Voltage')
+
+        if saveName is not None:
+            plt.savefig(saveName)
+
+        plt.show()
+
+    def movie(self, variables=None, InOut=0.0, plotgroup=None, saveName='movie.mp4', resolution=10, figsize=(15, 8)):
+
+        metadata = dict(title=self.measurementName, artist='Matplotlib',
+                        comment='')
+        writer = FFMpegWriter(fps=15, metadata=metadata)
+
+        fig = plt.figure(figsize=figsize)
+
+        subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup)
+
+        length = subset['Amp'].values.shape[1]
+
+        limits = self.varlimits(variables=variables, InOut=InOut, plotgroup=plotgroup)
+
+        with writer.saving(fig, saveName, 100):
+            for k in np.arange(0, length, int(length/resolution)):
+                # Create a new plot object
+                self.imslice(variables=variables, sliceNum=k, InOut=InOut, plotgroup=plotgroup, limits=limits)
+                writer.grab_frame()
+
+    def varlimits(self, variables=None, InOut=0.0, plotgroup=None):
+
+        # none means standard variables
+        if variables is None:
+            variables = ['Amp', 'Phase', 'Res', 'Q']
+
+        numVars = len(variables)
+
+        subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup)
+
+        outdata = np.zeros((numVars, 2))
+
+        for i in np.arange(0, numVars):
+
+            var = variables[i]
+
+            data = subset[var]
+
+            data = data.replace([np.inf, -np.inf], np.nan)
+
+            varmin = np.min(data.fillna(1000000).values)
+            varmax = np.max(data.fillna(-1000000).values)
+
+            if var == 'Res':
+                varmin = np.divide(varmin, 1000)
+                varmax = np.divide(varmax, 1000)
+            elif var == 'Phase':
+                varmin = 0 #varmin * (180/(np.pi))
+                varmax = 360 #varmax * (180 / (np.pi))
+            elif var == 'Q':
+                varmax = 5000
+
+            outdata[i][0] = varmin
+            outdata[i][1] = varmax
+
+        return outdata
+
 
 class LineMeasurement(BaseMeasurement):
 
@@ -216,12 +345,12 @@ class LineMeasurement(BaseMeasurement):
     def measurementName(self):
         return
     
-    def __init__(self, path=None, name='Scan'):
+    def __init__(self, path=None, name='Scan', adjustphase=True):
 
         shodata = pd.read_csv(path + 'shofit.csv', index_col=[0, 1])
         parameters = pd.read_csv(path + 'parameters.csv', header=None, index_col=0)
 
-        BaseMeasurement.__init__(self, shodata, parameters, xaxis=None)
+        BaseMeasurement.__init__(self, shodata, parameters, xaxis=None, adjustphase=adjustphase)
 
         self._measurementName = name
 
