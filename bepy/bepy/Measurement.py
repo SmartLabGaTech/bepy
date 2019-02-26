@@ -46,7 +46,12 @@ class BaseMeasurement:
             data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ"]].unstack()
 
             if adjustphase:
-                phaseMean = data['Phase'].fillna(0).mean().mean()
+                temp = data['Phase'].replace([np.inf, -np.inf], np.nan).copy()
+
+                phaseMean = temp.fillna(0).mean()
+                phaseMean = phaseMean.replace([np.inf, -np.inf], np.nan)
+                phaseMean = phaseMean.fillna(0).mean()
+
                 data['Phase'] = data['Phase'] - phaseMean
 
                 data['Phase'] = data['Phase'].applymap(lambda x: (x - 2*np.pi) if x > np.pi else x)

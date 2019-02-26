@@ -29,7 +29,7 @@ class SampleSet:
         self._gridsize[sampName] = gridsize
 
     def GetSampStack(self, sampstack=None, measstack=None, varstack=['Amp', 'Phase', 'Res', 'Q'], inout=0.0,
-                     plotGroup=None, insert=None, clean=False):
+                     plotGroup=None, insert=None, clean=False, ignore=False):
 
         if sampstack is None:
             sampstack = self._samples.keys()
@@ -57,7 +57,7 @@ class SampleSet:
 
             try:
                 newInd = np.hstack([newInd, np.repeat(samp, data.shape[0])])
-                stackreturn = pd.concat([stackreturn, data], axis=0)
+                stackreturn = pd.concat([stackreturn, data], axis=0, ignore_index=ignore)
             except TypeError:
                 newInd = np.repeat(samp, data.shape[0])
                 stackreturn = data
@@ -75,11 +75,19 @@ class SampleSet:
         return pd.DataFrame(stackreturn.values, index=index, columns=stackreturn.columns), samp_flags
 
     def fit(self, model, sampstack=None, measstack=None, varstack=['Amp', 'Phase', 'Res', 'Q'], inout=0.0,
-            plotGroup=None, insert=None, clean=False):
+            plotGroup=None, insert=None, clean=False, custom=None, custom_flags=None, custom_ind=None, custom_cols=None):
 
-        data, samp_flags = self.GetSampStack(sampstack, measstack, varstack, inout, plotGroup, insert, clean=clean)
+        if custom is None:
+            data, samp_flags = self.GetSampStack(sampstack, measstack, varstack, inout, plotGroup, insert, clean=clean)
+            inds = data.index
+            cols = data.columns
+            indata = data.values[:]
+        else:
+            samp_flags = custom_flags
+            indata = custom
+            inds = custom_ind
+            cols = custom_cols
 
-        indata = data.values[:]
         indata[np.where(indata==np.inf)] = 0
         indata[np.where(indata==np.nan)] = 0
         
@@ -88,8 +96,8 @@ class SampleSet:
 
         components = model.components_
         
-        mapframe = pd.DataFrame(maps, index=data.index)
-        compframe = pd.DataFrame(components, columns=data.columns)
+        mapframe = pd.DataFrame(maps, index=inds)
+        compframe = pd.DataFrame(components, columns=cols)
         
         temptList=[]
         
