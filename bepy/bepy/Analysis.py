@@ -29,6 +29,10 @@ class Analysis():
     def samp_flags(self):
         return
 
+    @property
+    def maxes(self):
+        return
+
     def __init__(self, model=None, fitted=None, comps=None, maps=None, gridSize=50, samp_flags=None):
         self._gridsize = gridSize
         self._model = model
@@ -37,8 +41,22 @@ class Analysis():
         self._maps = maps
         self._comps = comps
         self._samp_flags = samp_flags
+        self._maxes = {}
 
-    def plot(self, spacer=None):
+    def normalize(self, norm_type='ZeroToOne'):
+
+        idx = pd.IndexSlice
+
+        if norm_type is 'ZeroToOne':
+            for i in self._maps.columns.get_level_values(1).unique():
+                self._maxes[i] = self._maps.loc[:, idx[:, i]].max().max()
+
+                self._maps.loc[:, idx[:, i]] = self._maps.loc[:, idx[:, i]]/self._maxes[i]
+                self._comps.loc[i, :] = self._comps.loc[i, :]*self._maxes[i]
+        else:
+            pass
+
+    def plot(self, spacer=None, norm=None):
 
         numSamples = self._maps.columns.levels[0].shape[0]
         numComps = self._comps.shape[0]
@@ -66,7 +84,12 @@ class Analysis():
                 mapdata = np.reshape(newmap, [grid, grid])
 
                 sub = plt.subplot(plotrows, plotcols, i + j)
-                plot = sub.imshow(mapdata, cmap='jet')
+
+                if norm is 'ZeroToOne':
+                    plot = sub.imshow(mapdata, cmap='jet', vmin=0, vmax=1)
+                else:
+                    plot = sub.imshow(mapdata, cmap='jet')
+
                 plt.colorbar(plot, ax=sub)
 
                 if j == 0:
