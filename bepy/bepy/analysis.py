@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from bepy import otherfunctions
 
 
-class Analysis():
+class Analysis:
 
     @property
     def model(self):
@@ -56,15 +57,20 @@ class Analysis():
         else:
             pass
 
-    def plot(self, spacer=None, norm=None):
+    def plot(self, spacer=None, norm=None, wfits=False, colorbar=False, justmaps=0):
 
         numSamples = self._maps.columns.levels[0].shape[0]
         numComps = self._comps.shape[0]
         numMeas = self._comps.columns.levels[0].shape[0]
         numVars = self._comps.columns.levels[1].shape[0]
+        fitted = self._fitted
 
         plotrows = numComps
-        plotcols = numSamples + numVars*numMeas
+
+        if justmaps:
+            plotcols = numSamples
+        else:
+            plotcols = numSamples + numVars*numMeas
 
         i = 1
 
@@ -72,25 +78,28 @@ class Analysis():
 
             j = 0
 
-            flags = self._samp_flags[samp]
+            #flags = self._samp_flags[samp]
             grid = self._gridsize[samp]
 
             for comp in self._maps[samp]:
 
-                newmap = np.empty(flags.shape)
-                newmap[flags] = np.inf
-                newmap[~flags] = self._maps[samp][comp].values
+                #newmap = np.empty(grid*grid)
+                #newmap[flags] = np.inf
+                #newmap[~flags] = self._maps[samp][comp].values
+                newmap = self._maps[samp][comp].values
 
                 mapdata = np.reshape(newmap, [grid, grid])
 
                 sub = plt.subplot(plotrows, plotcols, i + j)
+                sub.axis('off')
 
                 if norm is 'ZeroToOne':
                     plot = sub.imshow(mapdata, cmap='jet', vmin=0, vmax=1)
+                elif norm is 'OneToOne':
+                    plot = sub.imshow(mapdata, cmap='jet', vmin=-1, vmax=1)
                 else:
                     plot = sub.imshow(mapdata, cmap='jet')
-
-                plt.colorbar(plot, ax=sub)
+                    plt.colorbar(plot, ax=sub)
 
                 if j == 0:
                     sub.set_title(samp)
@@ -99,39 +108,55 @@ class Analysis():
 
             i = i + 1
 
+        if norm is not None and colorbar:
+            plt.colorbar(plot, ax=sub)
+
         i = 1
 
-        for meas in self._comps.columns.levels[0]:
+        if justmaps == 0:
+            for meas in self._comps.columns.levels[0]:
 
-            for var in self._comps.columns.levels[1]:
+                for var in self._comps.columns.levels[1]:
 
-                j = 0
+                    j = 0
 
-                for comp in np.arange(0, numComps):
+                    for comp in np.arange(0, numComps):
 
-                    compdata = self._comps[meas][var].xs(comp)[:]
-                    plotdata = compdata.values
-                    
-                    cols = self._comps.columns.values
-                    xax = np.asarray([list(t) for t in zip(*cols)])[5,:]
-                    
-                    xax = xax.astype(float)
-                    
-                    if spacer is not None:
-                        newxax = np.full(spacer.shape, np.inf)
-                        newdata = np.full(spacer.shape, np.inf)
-                        newxax[spacer] = xax
-                        newdata[spacer] = plotdata
-                        
-                        xax = newxax
-                        plotdata = newdata
-                    
-                    sub = plt.subplot(plotrows, plotcols, i + j + numSamples)
-                    sub.plot(xax, plotdata)
+                        compdata = self._comps[meas][var].xs(comp)[:]
+                        plotdata = compdata.values
 
-                    if j == 0:
-                        sub.set_title(str(meas)+': ' + str(var))
+                        cols = self._comps.columns.values
+                        xax = np.asarray([list(t) for t in zip(*cols)])[-1, :]
 
-                    j = j + plotcols
+                        xax = xax.astype(float)
+                        xax = xax[0:len(compdata)]
 
-                i = i + 1
+                        if spacer is not None:
+                            newxax = np.full(spacer.shape, np.inf)
+                            newdata = np.full(spacer.shape, np.inf)
+                            newxax[spacer] = xax
+                            newdata[spacer] = plotdata
+
+                            xax = newxax
+                            plotdata = newdata
+
+                            if wfits is True and var == 'Amp':
+                                newdata = np.full(spacer.shape, np.inf)
+                                newdata[spacer] = fitted.loc[comp, :]
+                                fit_data = newdata
+
+                        if wfits is True and var == 'Amp':
+                            sub = plt.subplot(plotrows, plotcols, i + j + numSamples)
+                            sub.plot(xax, plotdata, '.k')
+                            sub.plot(xax, fit_data, '-r')
+                        else:
+                            sub = plt.subplot(plotrows, plotcols, i + j + numSamples)
+                            sub.plot(xax, plotdata)
+
+
+                        if j == 0:
+                            sub.set_title(str(meas)+': ' + str(var))
+
+                        j = j + plotcols
+
+                    i = i + 1
