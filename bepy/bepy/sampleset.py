@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from bepy import Analysis
+from bepy import analysis
 
 
 class SampleSet:
@@ -35,6 +35,7 @@ class SampleSet:
             sampstack = self._samples.keys()
 
         newInd = 0
+        oldInd = 0
         stackreturn = 0
 
         samp_flags = {}
@@ -57,15 +58,14 @@ class SampleSet:
 
             try:
                 newInd = np.hstack([newInd, np.repeat(samp, data.shape[0])])
+                oldInd = np.hstack([oldInd, data.index.values])
                 stackreturn = pd.concat([stackreturn, data], axis=0, ignore_index=ignore)
             except TypeError:
                 newInd = np.repeat(samp, data.shape[0])
+                oldInd = data.index.values
                 stackreturn = data
             except Exception as e:
                 print(e)
-
-        indicies = data.index.values
-        oldInd = np.tile(indicies, len(sampstack))
 
         ind = np.vstack([newInd, oldInd])
         tuples = list(zip(*ind))
@@ -98,16 +98,20 @@ class SampleSet:
         
         mapframe = pd.DataFrame(maps, index=inds)
         compframe = pd.DataFrame(components, columns=cols)
-        
-        temptList=[]
-        
+
+        temp_samp = mapframe.index.levels[0][0]
+
+        temptList = []
+
         for samp in mapframe.index.levels[0]:
             tempframe = mapframe.unstack().xs(samp).unstack().T
             temptList.append(tempframe)
-        
+
         newmaps = pd.concat(temptList, keys=(mapframe.index.levels[0]), axis=1)
 
-        results = Analysis.Analysis(model=model, fitted=fitted, comps=compframe, maps=newmaps,
+        newmaps = newmaps.reindex(np.arange(0, self._gridsize[temp_samp] * self._gridsize[temp_samp]))
+
+        results = analysis.Analysis(model=model, fitted=fitted, comps=compframe, maps=newmaps,
                                     gridSize=self._gridsize, samp_flags=samp_flags)
 
         self._analysis = results

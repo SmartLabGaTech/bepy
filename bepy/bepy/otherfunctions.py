@@ -2,6 +2,11 @@ from scipy.signal import butter, lfilter
 import numpy as np
 
 
+def stretch_exp(x, R, A, b, t):  #
+    exponent = (1 / t) * x  # define the function to fit too
+    stretch = exponent ** b  #
+    return R * np.exp(-stretch) + A  #
+
 def butter_lowpass(cutoff, fs, order=5):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq

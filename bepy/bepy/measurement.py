@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import copy
-from bepy import OtherFunctions
+from bepy import otherfunctions
 
 
 # Implement the data structure
@@ -117,15 +117,15 @@ class BaseMeasurement:
         oodata = self._data[var].T[mask].T.values
         indata = self._data[var].T[~mask].T.values
 
-        outflags[:, mask] = OtherFunctions.cleanbychirp(oodata, sensitivity)
-        outflags[:, ~mask] = OtherFunctions.cleanbychirp(indata, sensitivity)
+        outflags[:, mask] = otherfunctions.cleanbychirp(oodata, sensitivity)
+        outflags[:, ~mask] = otherfunctions.cleanbychirp(indata, sensitivity)
 
         if plot:
             plt.imshow(outflags, cmap='binary')
             plt.show()
 
         self._flags = pd.DataFrame(outflags, index=self._data[var].index, columns=self._data[var].columns)
-        self._acq_flags = OtherFunctions.collapseflags(self._flags)
+        self._acq_flags = otherfunctions.collapseflags(self._flags)
 
         return self._acq_flags
 

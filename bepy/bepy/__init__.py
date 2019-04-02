@@ -16,11 +16,11 @@ if missing_dependencies:
 del hard_dependencies, dependency, missing_dependencies
 
 #Import the classes making up bepy
-from .Measurement import *
-from .Sample import *
-from .SampleSet import *
-from .Analysis import *
-from .OtherFunctions import *
+from .measurement import *
+from .sample import *
+from .sampleset import *
+from .analysis import *
+from .otherfunctions import *
 
 # module level doc-string
 __doc__ = """
