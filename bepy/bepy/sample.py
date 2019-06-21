@@ -71,9 +71,6 @@ class Sample:
 
         for directory in directory_list:
 
-            if os.name == 'nt':
-                directory = PureWindowsPath(directory)
-
             direc = Path(directory)
 
             if os.path.isfile(direc / 'shofit.csv'):
