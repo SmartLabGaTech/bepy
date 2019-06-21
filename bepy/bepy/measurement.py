@@ -164,8 +164,6 @@ class GridMeasurement(BaseMeasurement):
     def __init__(self, path=None, measType='SSPFM', gridSize=10, adjustphase=True):
 
         if type(path) is 'str':
-            if os.name == 'nt':
-                path = PureWindowsPath(path)
             path = Path(path)
 
         shodata = pd.read_csv(path / 'shofit.csv', index_col=[0, 1])
@@ -372,8 +370,6 @@ class LineMeasurement(BaseMeasurement):
     def __init__(self, path=None, name='Scan', adjustphase=True):
 
         if type(path) is 'str':
-            if os.name == 'nt':
-                path = PureWindowsPath(path)
             path = Path(path)
 
         shodata = pd.read_csv(path / 'shofit.csv', index_col=[0, 1])
