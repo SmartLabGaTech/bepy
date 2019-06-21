@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from bepy import LineMeasurement, GridMeasurement
 import os
+from pathlib import Path, PureWindowsPath
 
 
 class Sample:
@@ -70,8 +71,13 @@ class Sample:
 
         for directory in directory_list:
 
-            if os.path.isfile(directory+'/shofit.csv'):
-                parameters = pd.read_csv(directory + '/parameters.csv', header=None, index_col=0)
+            if os.name == 'nt':
+                directory = PureWindowsPath(directory)
+
+            direc = Path(directory)
+
+            if os.path.isfile(direc / 'shofit.csv'):
+                parameters = pd.read_csv(direc / 'parameters.csv', header=None, index_col=0)
 
                 try:
                     measType = parameters.T['Measurement Type'].values[0]
@@ -80,7 +86,7 @@ class Sample:
                     measType = 'Grid'
                     measName = 'Fail'
 
-            self.addmeasurement(directory+'/', measType=measType, measName=measName, gridSize=gridSize, adjustphase=adjustphase)
+            self.addmeasurement(direc, measType=measType, measName=measName, gridSize=gridSize, adjustphase=adjustphase)
 
     def GetMeasStack(self, measstack = None, varstack = ['Amp', 'Phase', 'Res', 'Q'], inout=0.0, plotGroup=None,
                      insert=None, clean=False):
