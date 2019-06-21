@@ -64,14 +64,9 @@ class Sample:
 
     def addentiresample(self, path, gridSize=50, adjustphase=True):
 
-        directory_list = list()
-        for root, dirs, files in os.walk(path, topdown=False):
-            for name in dirs:
-                directory_list.append(os.path.join(root, name))
+        for folder in next(os.walk(path))[1]:
 
-        for directory in directory_list:
-
-            direc = Path(directory)
+            direc = Path(path+folder)
 
             if os.path.isfile(direc / 'shofit.csv'):
                 parameters = pd.read_csv(direc / 'parameters.csv', header=None, index_col=0)
