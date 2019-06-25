@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from bepy import LineMeasurement, GridMeasurement
 import os
+from pathlib import Path, PureWindowsPath
 
 
 class Sample:
@@ -28,7 +29,7 @@ class Sample:
         if path is not None:
             self.addentiresample(path, gridSize, adjustphase)
 
-    def addmeasurement(self, meas, measType=None, gridSize=None, adjustphase=True):
+    def addmeasurement(self, meas, measType=None, measName=None, gridSize=None, adjustphase=True):
 
         if measType is None:
             measType = meas._measurementName
@@ -42,32 +43,42 @@ class Sample:
                 raise ValueError(measType+': Unknown measurement type')
 
         else:
-            if measType in ['Vert', 'Lat']:
+            if measType.lower() in 'scan':
                 try:
-                    newMeas = LineMeasurement(meas, adjustphase=adjustphase)
+                    newMeas = LineMeasurement(meas, name=measName, adjustphase=adjustphase)
                 except ValueError:
                     raise ValueError('Argument is not a path to measurement data. Maybe its a Measurement Object?')
                 meas_flags = newMeas.clean()
-                self._linemeasurements[measType] = newMeas
-            elif measType in ['SSPFM', 'NonLin', 'Relax']:
+                self._linemeasurements[measName] = newMeas
+            else:
+                if measType.lower() in ['grid']:
+                    measType = 'Relax'
                 try:
                     newMeas = GridMeasurement(meas, measType, gridSize, adjustphase=adjustphase)
                 except ValueError:
                     raise ValueError('Argument is not a path to measurement data. Maybe its a Measurement Object?')
                 meas_flags = newMeas.clean()
-                self._gridmeasurements[measType] = newMeas
-            else:
-                raise ValueError(measType+': Unknown measurement type')
+                self._gridmeasurements[measName] = newMeas
 
         self._meas_acq_flags[measType] = meas_flags
 
     def addentiresample(self, path, gridSize=50, adjustphase=True):
 
-        foldernames={'BELine': 'Vert', 'BEScan': 'Vert', 'BELat': 'Lat', 'Relax': 'Relax', 'SSPFM': 'SSPFM', 'NonLin': 'NonLin'}
+        for folder in next(os.walk(path))[1]:
 
-        for name in foldernames:
-            if os.path.isdir(path+name):
-                self.addmeasurement(path+name+'/', measType=foldernames[name], gridSize=gridSize, adjustphase=adjustphase)
+            direc = Path(path+folder)
+
+            if os.path.isfile(direc / 'shofit.csv'):
+                parameters = pd.read_csv(direc / 'parameters.csv', header=None, index_col=0)
+
+                try:
+                    measType = parameters.T['Measurement Type'].values[0]
+                    measName = parameters.T['Measurement Name'].values[0]
+                except KeyError:
+                    measType = 'Grid'
+                    measName = 'Fail'
+
+            self.addmeasurement(direc, measType=measType, measName=measName, gridSize=gridSize, adjustphase=adjustphase)
 
     def GetMeasStack(self, measstack = None, varstack = ['Amp', 'Phase', 'Res', 'Q'], inout=0.0, plotGroup=None,
                      insert=None, clean=False):

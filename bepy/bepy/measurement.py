@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import copy
 from bepy import otherfunctions
+from pathlib import Path, PureWindowsPath
+import os
 
 
 # Implement the data structure
@@ -161,8 +163,11 @@ class GridMeasurement(BaseMeasurement):
 
     def __init__(self, path=None, measType='SSPFM', gridSize=10, adjustphase=True):
 
-        shodata = pd.read_csv(path + 'shofit.csv', index_col=[0, 1])
-        parameters = pd.read_csv(path + 'parameters.csv', header=None, index_col=0)
+        if type(path) is 'str':
+            path = Path(path)
+
+        shodata = pd.read_csv(path / 'shofit.csv', index_col=[0, 1])
+        parameters = pd.read_csv(path / 'parameters.csv', header=None, index_col=0)
 
         if measType == 'SSPFM':
             self._acqXaxis = 10*(shodata['DC'].xs(0))
@@ -364,8 +369,11 @@ class LineMeasurement(BaseMeasurement):
     
     def __init__(self, path=None, name='Scan', adjustphase=True):
 
-        shodata = pd.read_csv(path + 'shofit.csv', index_col=[0, 1])
-        parameters = pd.read_csv(path + 'parameters.csv', header=None, index_col=0)
+        if type(path) is 'str':
+            path = Path(path)
+
+        shodata = pd.read_csv(path / 'shofit.csv', index_col=[0, 1])
+        parameters = pd.read_csv(path / 'parameters.csv', header=None, index_col=0)
 
         BaseMeasurement.__init__(self, shodata, parameters, xaxis=None, adjustphase=adjustphase)
 
