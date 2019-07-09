@@ -2,23 +2,22 @@ import pandas as pd
 import numpy as np
 from bepy import LineMeasurement, GridMeasurement
 import os
-from pathlib import Path, PureWindowsPath
-
+from pathlib import Path
 
 class Sample:
 
     @property
     def linemeasurements(self):
-        return
+        return self._linemeasurements
 
     @property
     def gridmeasurements(self):
-        return
+        return self._gridmeasurements
 
     # Store flags identifying bad acquisitions
     @property
     def meas_acq_flags(self):
-        return
+        return self._meas_acq_flags
 
     def __init__(self, path=None, gridSize=50, adjustphase=True):
 
