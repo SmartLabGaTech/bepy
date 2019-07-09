@@ -4,9 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import copy
 from bepy import otherfunctions
-from pathlib import Path, PureWindowsPath
-import os
-
+from pathlib import Path
 
 # Implement the data structure
 class BaseMeasurement:
@@ -14,22 +12,22 @@ class BaseMeasurement:
     # Store parameters of the measurement
     @property
     def params(self):
-        return
+        return self._params
 
     # Store flags identifying bad chirps
     @property
     def flags(self):
-        return
+        return self._flags
 
     # Store flags identifying bad acquisitions
     @property
     def acq_flags(self):
-        return
+        return self._acq_flags
 
     # Store actual data
     @property
     def data(self):
-        return
+        return self._data
 
     def __init__(self, shodata=None, parameters=None, xaxis=None, adjustphase=True):
 
@@ -44,8 +42,9 @@ class BaseMeasurement:
             temp_plotgroup = shodata["PlotGroup"].xs(0)
             in_out = shodata['InOut'].unstack().xs(0)
             self._flags = shodata['Flag'].unstack()
-            
-            data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ"]].unstack()
+
+            shodata['PR'] = np.zeros(shodata.shape[0])
+            data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ", "PR"]].unstack()
 
             if adjustphase:
                 temp = data['Phase'].replace([np.inf, -np.inf], np.nan).copy()
@@ -55,25 +54,26 @@ class BaseMeasurement:
                 phaseMean = phaseMean.fillna(0).mean()
 
                 data['Phase'] = data['Phase'] - phaseMean
+                data['Phase'] = data['Phase'].applymap(lambda x: np.mod(x + np.pi, 2*np.pi) - np.pi)
 
-                data['Phase'] = data['Phase'].applymap(lambda x: (x - 2*np.pi) if x > np.pi else x)
-                data['Phase'] = data['Phase'].applymap(lambda x: (x + 2 * np.pi) if x < -np.pi else x)
+            data['PR'] = data.apply(lambda row: row['Amp'] * np.sin(row['Phase']), axis=1)
 
             data = data.transpose()
-            data['InOut'] = np.tile(in_out.values, 8)
+            data['InOut'] = np.tile(in_out.values, 9)
             data.set_index('InOut', append=True, inplace=True)
 
-            data['PlotGroup'] = np.tile(temp_plotgroup.values, 8)
+            data['PlotGroup'] = np.tile(temp_plotgroup.values, 9)
             data.set_index('PlotGroup', append=True, inplace=True)
             
             if xaxis is not None:
-                data['xaxis'] = np.tile(xaxis.values, 8)
+                data['xaxis'] = np.tile(xaxis.values, 9)
                 data.set_index('xaxis', append=True, inplace=True)
             
             data = data.transpose()
-            
+
             self._data = data
-    
+            self.clean()
+
     def GetDataSubset(self, inout=0.0, plotGroup=None, insert=None, stack=None, clean=False):
         
         inout_vals=self._data.columns.get_level_values(level='InOut')
@@ -151,15 +151,15 @@ class GridMeasurement(BaseMeasurement):
 
     @property
     def gridSize(self):
-        return
+        return self._gridSize
     
     @property
     def measurementName(self):
-        return
+        return self._measurementName
 
     @property
     def acqXaxis(self):
-        return
+        return self._acqXaxis
 
     def __init__(self, path=None, measType='SSPFM', gridSize=10, adjustphase=True):
 
@@ -180,6 +180,7 @@ class GridMeasurement(BaseMeasurement):
 
         self._measurementName = measType
         self._gridSize = gridSize
+        self.add_rc()
 
     def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, plotmap=False ,saveName=None):
 
@@ -357,15 +358,18 @@ class GridMeasurement(BaseMeasurement):
 
             outdata[i][0] = varmin
             outdata[i][1] = varmax
-
         return outdata
+
+    def add_rc(self):
+        self._data['r'] = pd.Series(np.sort(np.tile(np.arange(self._gridSize), self._gridSize)), index=self._data.index)
+        self._data['c'] = pd.Series(np.tile(np.arange(self._gridSize), self._gridSize), index=self._data.index)
 
 
 class LineMeasurement(BaseMeasurement):
 
     @property
     def measurementName(self):
-        return
+        return self._measurementName
     
     def __init__(self, path=None, name='Scan', adjustphase=True):
 
@@ -449,6 +453,3 @@ class LineMeasurement(BaseMeasurement):
             plt.savefig(saveName)
 
         plt.show()
-        
-        
-

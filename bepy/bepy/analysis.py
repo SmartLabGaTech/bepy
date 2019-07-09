@@ -1,38 +1,37 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from bepy import otherfunctions
 
 
 class Analysis:
 
     @property
     def model(self):
-        return
+        return self._model
 
     @property
     def fitted(self):
-        return
+        return self._fitted
     
     @property
     def comps(self):
-        return
+        return self._comps
     
     @property
     def maps(self):
-        return
+        return self._maps
     
     @property
     def gridsize(self):
-        return
+        return self._gridsize
 
     @property
     def samp_flags(self):
-        return
+        return self._samp_flags
 
     @property
     def maxes(self):
-        return
+        return self._maxes
 
     def __init__(self, model=None, fitted=None, comps=None, maps=None, gridSize=50, samp_flags=None):
         self._gridsize = gridSize

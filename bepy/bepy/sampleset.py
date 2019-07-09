@@ -7,15 +7,15 @@ class SampleSet:
 
     @property
     def samples(self):
-        return
+        return self._samples
 
     @property
     def analysis(self):
-        return
+        return self._analysis
 
     @property
     def gridsize(self):
-        return
+        return self._gridsize
 
     def __init__(self):
         self._samples = {}
