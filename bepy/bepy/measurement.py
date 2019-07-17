@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import copy
-from bepy import otherfunctions
+from . import otherfunctions
 from pathlib import Path
 
 # Implement the data structure
