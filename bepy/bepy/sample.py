@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from bepy import LineMeasurement, GridMeasurement
+from . import LineMeasurement, GridMeasurement
 import os
 from pathlib import Path
 

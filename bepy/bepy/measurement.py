@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 import copy
-from bepy import otherfunctions
+from . import otherfunctions
 from pathlib import Path
 
 # Implement the data structure
@@ -182,29 +182,25 @@ class GridMeasurement(BaseMeasurement):
         self._gridSize = gridSize
         self.add_rc()
 
-    def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, plotmap=False ,saveName=None):
-
+    def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, plotmap=False, saveName=None):
         if variables is None:
             variables = ['Amp', 'Phase', 'Res', 'Q']
 
         if type(pointNum) is tuple:
-            pointNum = (pointNum[0]-1)*self._gridSize + pointNum[1]
+            pointNum = (pointNum[0] - 1) * self.gridSize + pointNum[1]
 
         subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup, insert=insert)
-        
-        numVars=len(variables)
-
-        rows = ((numVars-1) // 4) + 1
-
-        if numVars > 4:
+        num_vars = len(variables)
+        rows = ((num_vars - 1) // 4) + 1
+        if num_vars > 4:
             cols = 4
         else:
-            cols = numVars
+            cols = num_vars
 
-        for i in np.arange(0, numVars):
+        plt.figure(figsize=(5 * cols, 4 * rows))
 
+        for i in np.arange(0, num_vars):
             var = variables[i]
-
             data = subset[var]
             xaxis = data.columns.get_level_values('xaxis')
 
@@ -214,26 +210,26 @@ class GridMeasurement(BaseMeasurement):
             elif var == 'Amp':
                 ylabel = var + r' ($\mu$V)'
             elif var == 'Phase':
-                data = data * (180/(np.pi))
+                data = data * (180 / np.pi)
                 ylabel = var + r' ($\degree$)'
             elif var == 'Q':
                 ylabel = var
 
             if pointNum is None:
-                plotdata = data.mean().values
+                plot_data = data.mean().values
             else:
-                plotdata = data.xs(pointNum).values
+                plot_data = data.xs(pointNum).values
 
             sub = plt.subplot(rows, cols, i + 1)
 
-            if self._measurementName == 'SSPFM':
-                sub.plot(xaxis, plotdata)
+            if self.measurementName == 'SSPFM':
+                sub.plot(xaxis, plot_data)
                 sub.set_xlabel('DC Volt (V)')
-            elif self._measurementName == 'NonLin':
-                sub.plot(xaxis, plotdata)
+            elif self.measurementName == 'NonLin':
+                sub.plot(xaxis, plot_data)
                 sub.set_xlabel('AC Volt (V)')
-            elif self._measurementName == 'Relax':
-                sub.plot(xaxis, plotdata)
+            elif self.measurementName == 'Relax':
+                sub.plot(xaxis, plot_data)
                 sub.set_xlabel('Time (s)')
 
             sub.set_ylabel(ylabel)
@@ -383,70 +379,56 @@ class LineMeasurement(BaseMeasurement):
 
         self._measurementName = name
 
-    def plot(self, variables=None, fold = False, lims = None, saveName=None, clean=False, plotgroup=None):
-
+    def plot(self, variables=None, fold=False, saveName=None, clean=False, plotgroup=None):
         if variables is None:
             variables = ['Amp', 'Phase', 'Res', 'Q']
 
-        numVars = len(variables)
-
-        rows = ((numVars - 1) // 4) + 1
-
-        if numVars > 4:
+        num_vars = len(variables)
+        rows = ((num_vars - 1) // 4) + 1
+        if num_vars > 4:
             cols = 4
         else:
-            cols = numVars
+            cols = num_vars
 
-        subset = self.GetDataSubset(plotGroup=plotgroup)
+        plt.figure(figsize=(5 * cols, 4 * rows))
 
-        for i in np.arange(0, numVars):
-
+        for i in np.arange(0, num_vars):
             var = variables[i]
-
-            data = subset
-
-            data = data[var]
+            data = self.GetDataSubset(stack=var, plotGroup=plotgroup)
 
             if clean:
-                plotdata = copy.deepcopy(data.values)
-                cleanflags = self._flags
+                plot_data = copy.deepcopy(data.values)
+                clean_flags = self._flags
 
                 if plotgroup is not None:
                     pg_mask = self._data.columns.get_level_values(level='PlotGroup') == plotgroup
 
-                cleanflags = cleanflags.T[pg_mask].T
-                plotdata[cleanflags[var].values] = np.inf
+                clean_flags = clean_flags.T[pg_mask].T
+                plot_data[clean_flags[var].values] = np.inf
             else:
-                plotdata = data.values
+                plot_data = data.values
 
             if fold:
-                imRows = np.shape(plotdata)[0]
-                imCols = np.shape(plotdata)[1]
-                top = plotdata[0:int(imRows/2),:]
-                bottom = np.flipud(plotdata[int(imRows/2):,:])
-                new_plotdata = np.empty([int(imRows), imCols])
-                new_plotdata[::2,:] = top
-                new_plotdata[1::2,:] = bottom
-                plotdata = new_plotdata
-                
-            if lims is None:
-                minimum = np.min(plotdata)
-                maximum = np.max(plotdata)
-            else:
-                minimum = lims[0][i]
-                maximum = lims[1][i]
+                image_rows = np.shape(plot_data)[0]
+                image_cols = np.shape(plot_data)[1]
+                top = plot_data[0:int(image_rows / 2), :]
+                bottom = np.flipud(plot_data[int(image_rows / 2):, :])
+                new_plot_data = np.empty([int(image_rows), image_cols])
+                new_plot_data[::2, :] = top
+                new_plot_data[1::2, :] = bottom
+                plot_data = new_plot_data
 
             if var == 'Res':
-                plotdata = np.divide(plotdata, 1000000)
+                plot_data = np.divide(plot_data, 1000000)
 
             if var == 'Phase':
-                plotdata = np.multiply(plotdata, 180/np.pi)
+                plot_data = np.multiply(plot_data, 180 / np.pi)
 
             sub = plt.subplot(rows, cols, i + 1)
-            plot = sub.imshow(plotdata, cmap='jet', vmin=minimum, vmax=maximum)
-
+            minimum = np.mean(plot_data) - 1.5 * np.std(plot_data)
+            maximum = np.mean(plot_data) + 1.5 * np.std(plot_data)
+            plot = sub.imshow(plot_data, cmap='viridis', vmin=minimum, vmax=maximum)
             plt.colorbar(plot, ax=sub)
-
             sub.set_title(var)
 
         if saveName is not None:
