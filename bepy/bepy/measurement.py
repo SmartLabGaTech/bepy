@@ -5,6 +5,8 @@ from matplotlib.animation import FFMpegWriter
 import copy
 from . import otherfunctions
 from pathlib import Path
+from scipy import stats, ndimage, integrate
+import warnings
 
 # Implement the data structure
 class BaseMeasurement:
@@ -359,6 +361,134 @@ class GridMeasurement(BaseMeasurement):
     def add_rc(self):
         self._data['r'] = pd.Series(np.sort(np.tile(np.arange(self._gridSize), self._gridSize)), index=self._data.index)
         self._data['c'] = pd.Series(np.tile(np.arange(self._gridSize), self._gridSize), index=self._data.index)
+
+    @staticmethod
+    def intersect_lines(m1, b1, m2, b2):
+        x = (b2 - b1) / (m1 - m2)
+        y = m1 * x + b1
+        return x, y
+
+    def split_loop(self, index, second_loop=True, inout=0, stack='PR', down_up=True):
+        full_v = self.GetDataSubset(inout=inout, stack=stack).columns.get_level_values(3).values
+        full_r = self.GetDataSubset(inout=inout, stack=stack).iloc[index].values
+        middle_index = int(len(full_r) / 2)
+        if second_loop:
+            half_v = full_v[middle_index:-1]  # Out-of-field loops have an extra point at the end.
+            half_r = full_r[middle_index:-1]  # if this is changed, the -1 will need to be removed...
+        else:
+            half_v = full_v[:middle_index]
+            half_r = full_r[:middle_index]
+
+        # Triangular down up
+        if down_up:
+            min_idx = np.argmin(half_v)
+            max_idx = np.argmax(half_v)
+            branch_v = half_v[min_idx:max_idx + 1]
+            branch_r_1 = half_r[min_idx:max_idx + 1]
+            branch_r_2 = np.concatenate((half_r[:min_idx + 1][::-1], half_r[max_idx:][::-1]))
+            if np.mean(branch_r_1) > np.mean(branch_r_2):
+                return branch_v.astype(float), branch_r_1.astype(float), branch_r_2.astype(float)
+            else:
+                return branch_v.astype(float), branch_r_2.astype(float), branch_r_1.astype(float)
+
+        # Triangular up down
+        else:
+            min_idx = np.argmin(half_v)
+            max_idx = np.argmax(half_v)
+            branch_v = half_v[max_idx:min_idx + 1]
+            branch_r_1 = half_r[max_idx:min_idx + 1]
+            branch_r_2 = np.concatenate((half_r[:max_idx + 1][::-1], half_r[min_idx:][::-1]))
+            if np.mean(branch_r_1) > np.mean(branch_r_2):
+                return branch_v, branch_r_1, branch_r_2
+            else:
+                return branch_v, branch_r_2, branch_r_1
+
+    def extract_sspfm_parameters(self, index, horz_spread=20, vert_spread=2, second_loop=True, inout=0, stack='PR'):
+        v, r_up, r_down = self.split_loop(index, second_loop, inout, stack)
+        try:
+            v_diff = np.diff(v)
+
+            r_up_diff = np.diff(r_up)
+            r_up_slopes = np.add(r_up_diff[1:], r_up_diff[:-1]) / np.add(v_diff[1:], v_diff[:-1])
+            r_up_slopes_filtered = abs(ndimage.filters.gaussian_filter(list(r_up_slopes), 1, mode='reflect'))
+            r_up_max_slopes_filtered_idx = np.argmax(r_up_slopes_filtered)
+
+            r_down_diff = np.diff(r_down)
+            r_down_slopes = np.add(r_down_diff[1:], r_down_diff[:-1]) / np.add(v_diff[1:], v_diff[:-1])
+            r_down_slopes_filtered = abs(ndimage.filters.gaussian_filter(list(r_down_slopes), 1, mode='reflect'))
+            r_down_max_slopes_filtered_idx = np.argmax(r_down_slopes_filtered)
+
+            r_s_pos = r_up[np.argmax(v)]  # r_up and r_down have the same first and last point
+            r_s_neg = r_up[np.argmin(v)]
+
+            vert_left_m, vert_left_b, _, _, _ = stats.linregress(
+                v[r_up_max_slopes_filtered_idx - vert_spread:r_up_max_slopes_filtered_idx + vert_spread + 1],
+                r_up[r_up_max_slopes_filtered_idx - vert_spread:r_up_max_slopes_filtered_idx + vert_spread + 1])
+            vert_right_m, vert_right_b, _, _, _ = stats.linregress(v[r_down_max_slopes_filtered_idx - vert_spread:
+                                                                     r_down_max_slopes_filtered_idx + vert_spread + 1]
+                                                                   [::-1],
+                r_down[r_down_max_slopes_filtered_idx - vert_spread:
+                       r_down_max_slopes_filtered_idx + vert_spread + 1][::-1])
+            v_pos = -vert_right_b / vert_right_m
+            v_neg = -vert_left_b / vert_left_m
+
+            min_abs_v = np.argmin(abs(v))
+            horz_upper_m, horz_upper_b, _, _, _ = stats.linregress(v[-horz_spread:], r_up[-horz_spread:])
+            horz_lower_m, horz_lower_b, _, _, _ = stats.linregress(v[:horz_spread], r_down[:horz_spread])
+            v_c_pos, _ = self.intersect_lines(horz_lower_m, horz_lower_b, vert_right_m, vert_right_b)
+            v_c_neg, _ = self.intersect_lines(horz_upper_m, horz_upper_b, vert_left_m, vert_left_b)
+            _, r_0_pos, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], r_up[min_abs_v - 2:min_abs_v + 4])
+            _, r_0_neg, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], r_down[min_abs_v - 2:min_abs_v + 4])
+
+            r_s = r_s_pos - r_s_neg
+            imprint = 0.5 * (v_pos + v_neg)
+            area = integrate.trapz(r_up - r_down, x=v)
+            return {'Area': area, 'R0+': r_0_pos, 'R0-': r_0_neg, 'Rs+': r_s_pos, 'Rs-': r_s_neg, 'V+': v_pos,
+                    'V-': v_neg, 'Vc+': v_c_pos, 'Vc-': v_c_neg, 'Imprint': imprint, 'Rs': r_s}
+        except Exception as exc:
+            print(exc)
+            return {'Area': np.nan, 'R0+': np.nan, 'R0-': np.nan, 'Rs+': np.nan, 'Rs-': np.nan, 'V+': np.nan,
+                    'V-': np.nan, 'Vc+': np.nan, 'Vc-': np.nan, 'Imprint': np.nan, 'Rs': np.nan}
+
+    def extract_all_sspfm_parameters(self, horz_spread=20, vert_spread=2):
+        num_rows = len(self.data.index)
+        area = np.zeros(num_rows)
+        r_0_pos = np.zeros(num_rows)
+        r_0_neg = np.zeros(num_rows)
+        r_s_pos = np.zeros(num_rows)
+        r_s_neg = np.zeros(num_rows)
+        v_pos = np.zeros(num_rows)
+        v_neg = np.zeros(num_rows)
+        v_c_pos = np.zeros(num_rows)
+        v_c_neg = np.zeros(num_rows)
+        imprint = np.zeros(num_rows)
+        r_s = np.zeros(num_rows)
+        for index in range(num_rows):
+            result = self.extract_sspfm_parameters(index, horz_spread=horz_spread, vert_spread=vert_spread)
+            area[index] = result['Area']
+            r_0_pos[index] = result['R0+']
+            r_0_neg[index] = result['R0-']
+            r_s_pos[index] = result['Rs+']
+            r_s_neg[index] = result['Rs-']
+            v_pos[index] = result['V+']
+            v_neg[index] = result['V-']
+            v_c_pos[index] = result['Vc+']
+            v_c_neg[index] = result['Vc-']
+            imprint[index] = result['Imprint']
+            r_s[index] = result['Rs']
+            if np.mod(index, 100) == 0:
+                print('Progress: ' + str(index) + '/' + str(num_rows))
+        self.data['Area'] = area
+        self.data['R0+'] = r_0_pos
+        self.data['R0-'] = r_0_neg
+        self.data['Rs+'] = r_s_pos
+        self.data['Rs-'] = r_s_neg
+        self.data['V+'] = v_pos
+        self.data['V-'] = v_neg
+        self.data['Vc+'] = v_c_pos
+        self.data['Vc-'] = v_c_neg
+        self.data['Im'] = imprint
+        self.data['Rs'] = r_s
 
 
 class LineMeasurement(BaseMeasurement):
