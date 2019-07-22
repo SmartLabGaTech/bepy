@@ -7,6 +7,7 @@ from . import otherfunctions
 from pathlib import Path
 from scipy import stats, ndimage, integrate
 import warnings
+import os
 
 # Implement the data structure
 class BaseMeasurement:
@@ -163,10 +164,19 @@ class GridMeasurement(BaseMeasurement):
     def acqXaxis(self):
         return self._acqXaxis
 
+    @property
+    def path(self):
+        return self._path
+
+    @property
+    def analysis(self):
+        return self._analysis
+
     def __init__(self, path=None, measType='SSPFM', gridSize=10, adjustphase=True):
 
         if type(path) is 'str':
             path = Path(path)
+        self._path = path
 
         shodata = pd.read_csv(path / 'shofit.csv', index_col=[0, 1])
         parameters = pd.read_csv(path / 'parameters.csv', header=None, index_col=0)
@@ -183,6 +193,11 @@ class GridMeasurement(BaseMeasurement):
         self._measurementName = measType
         self._gridSize = gridSize
         self.add_rc()
+        if os.path.isfile(self.path / 'SSPFM_analysis.csv'):
+            self._analysis = pd.read_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+        else:
+            self._analysis = pd.DataFrame(index=self.data.index)
+        self._analysis = self._analysis.set_index('Acq')
 
     def plot(self, variables=None, pointNum=None, InOut=0.0, insert=None, plotgroup=None, plotmap=False, saveName=None):
         if variables is None:
@@ -478,17 +493,34 @@ class GridMeasurement(BaseMeasurement):
             r_s[index] = result['Rs']
             if np.mod(index, 100) == 0:
                 print('Progress: ' + str(index) + '/' + str(num_rows))
-        self.data['Area'] = area
-        self.data['R0+'] = r_0_pos
-        self.data['R0-'] = r_0_neg
-        self.data['Rs+'] = r_s_pos
-        self.data['Rs-'] = r_s_neg
-        self.data['V+'] = v_pos
-        self.data['V-'] = v_neg
-        self.data['Vc+'] = v_c_pos
-        self.data['Vc-'] = v_c_neg
-        self.data['Im'] = imprint
-        self.data['Rs'] = r_s
+        self.analysis['Area'] = area
+        self.analysis['R0+'] = r_0_pos
+        self.analysis['R0-'] = r_0_neg
+        self.analysis['Rs+'] = r_s_pos
+        self.analysis['Rs-'] = r_s_neg
+        self.analysis['V+'] = v_pos
+        self.analysis['V-'] = v_neg
+        self.analysis['Vc+'] = v_c_pos
+        self.analysis['Vc-'] = v_c_neg
+        self.analysis['Imprint'] = imprint
+        self.analysis['Rs'] = r_s
+
+    def save_sspfm_analysis(self):
+        if self.path is not None:
+            self.analysis.to_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+        else:
+            warnings.warn('Path not set. Set the path to the GridMeasurement files using the .path property to this ' +
+                          'measurement object.')
+
+    def load_sspfm_analysis(self):
+        if self.path is not None:
+            if os.path.isfile(self.path / 'SSPFM_analysis.csv'):
+                self._analysis = pd.read_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+            else:
+                warnings.warn('Saved SSPFM analysis file does not exist.')
+        else:
+            warnings.warn('Path not set. Set the path to the GridMeasurement files using the .path property to this ' +
+                          'measurement object.')
 
 
 class LineMeasurement(BaseMeasurement):
