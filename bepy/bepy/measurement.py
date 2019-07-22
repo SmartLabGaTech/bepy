@@ -8,6 +8,8 @@ from pathlib import Path
 from scipy import stats, ndimage, integrate
 import warnings
 import os
+from skimage import feature
+
 
 # Implement the data structure
 class BaseMeasurement:
@@ -193,8 +195,8 @@ class GridMeasurement(BaseMeasurement):
         self._measurementName = measType
         self._gridSize = gridSize
         self.add_rc()
-        if os.path.isfile(self.path / 'SSPFM_analysis.csv'):
-            self._analysis = pd.read_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+        if os.path.isfile(self.path / 'analysis.csv'):
+            self._analysis = pd.read_csv(os.path.join(self.path, 'analysis.csv'))
         else:
             self._analysis = pd.DataFrame(index=self.data.index)
         self._analysis = self._analysis.set_index('Acq')
@@ -505,17 +507,18 @@ class GridMeasurement(BaseMeasurement):
         self.analysis['Imprint'] = imprint
         self.analysis['Rs'] = r_s
 
-    def save_sspfm_analysis(self):
+    def save_analysis(self):
         if self.path is not None:
-            self.analysis.to_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+            self.analysis.to_csv(os.path.join(self.path, 'analysis.csv'))
         else:
             warnings.warn('Path not set. Set the path to the GridMeasurement files using the .path property to this ' +
                           'measurement object.')
 
-    def load_sspfm_analysis(self):
+    def load_analysis(self):
         if self.path is not None:
-            if os.path.isfile(self.path / 'SSPFM_analysis.csv'):
+            if os.path.isfile(self.path / 'analysis.csv'):
                 self._analysis = pd.read_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+                self._analysis = self._analysis.set_index('Acq')
             else:
                 warnings.warn('Saved SSPFM analysis file does not exist.')
         else:
@@ -528,7 +531,7 @@ class LineMeasurement(BaseMeasurement):
     @property
     def measurementName(self):
         return self._measurementName
-    
+
     def __init__(self, path=None, name='Scan', adjustphase=True):
 
         if type(path) is 'str':
@@ -597,3 +600,28 @@ class LineMeasurement(BaseMeasurement):
             plt.savefig(saveName)
 
         plt.show()
+
+    def detect_domain_walls(self, sigma=3):
+        return feature.canny(self.GetDataSubset(plotGroup=1, stack='PR').values, sigma)
+
+    def find_distances(self, domain_walls=None):
+        if domain_walls is None:
+            domain_walls = self.detect_domain_walls()
+        num_rows = domain_walls.shape[0]
+        num_cols = domain_walls.shape[1]
+        min_distances = np.empty((num_rows, num_cols))
+        gaussian_distances = np.empty((num_rows, num_cols))
+        # stdev_distances = np.empty((num_rows, num_cols))
+        master = otherfunctions.generate_dist_master((num_rows, num_cols))
+        gaussian_kernel = otherfunctions.generate_gaussian_kernel((num_rows, num_cols), 3)
+        for row in range(num_rows):
+            for col in range(num_cols):
+                sub_master = master[num_rows - 1 - row:2 * num_rows - 1 - row,
+                             num_cols - 1 - col:2 * num_cols - 1 - col]
+                min_distances[row, col] = np.min(sub_master[domain_walls])
+                sub_gaussian = gaussian_kernel[num_rows - 1 - row:2 * num_rows - 1 - row,
+                               num_cols - 1 - col:2 * num_cols - 1 - col]
+                combined = sub_gaussian * sub_master
+                gaussian_distances[row, col] = np.sum(combined[domain_walls])
+                # stdev_distances[row, col] = statistics.stdev(sorted(sub_master[domain_walls])[:10])
+        return min_distances, gaussian_distances
