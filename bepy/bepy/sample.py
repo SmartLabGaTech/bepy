@@ -146,10 +146,10 @@ class Sample:
             raise ValueError('Please select which measurement to plot')
 
     @staticmethod
-    def match_distance_to_sspfm(line_measurement, grid_measurement):
-        distances = line_measurement.find_distances()
+    def match_distance_to_sspfm(line_measurement, grid_measurement, distances=None):
+        if distances is None:
+            distances = line_measurement.find_distances()
         grid = otherfunctions.generate_template_grid(distances[0].shape[0], grid_measurement.gridSize)
         grid_measurement.analysis['x'] = pd.Series(np.argwhere(grid).T[1], index=grid_measurement.analysis.index)
         grid_measurement.analysis['y'] = pd.Series(np.argwhere(grid).T[0], index=grid_measurement.analysis.index)
-        grid_measurement.analysis['MinDist'] = distances[0][grid]
-        grid_measurement.analysis['GaussianDist'] = distances[1][grid]
+        grid_measurement.analysis['Distance'] = distances[grid]

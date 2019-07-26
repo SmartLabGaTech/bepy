@@ -66,7 +66,7 @@ def normalize_image(img):
     return (img - np.nanmin(img)) / (np.nanmax(img) - np.nanmin(img))
 
 
-def generate_dist_master(shape):
+def generate_distance_kernel(shape):
     num_rows = shape[0]
     num_cols = shape[1]
     master_num_rows = 2*num_rows-1
@@ -77,16 +77,6 @@ def generate_dist_master(shape):
             dist = pow(pow(row-num_rows+1, 2) + pow(col-num_cols+1, 2), 0.5)
             dist_master[row, col] = dist
     return dist_master
-
-
-def generate_gaussian_kernel(shape, sigma):
-    num_rows = shape[0]
-    num_cols = shape[1]
-    kernel_num_rows = 2 * num_rows - 1
-    kernel_num_cols = 2 * num_cols - 1
-    kernel = np.zeros((kernel_num_rows, kernel_num_cols))
-    kernel[num_rows, num_cols] = 1
-    return filters.gaussian_filter(kernel, sigma=sigma)
 
 
 def generate_template_grid(img_side_length, grid_size):

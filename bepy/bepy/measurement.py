@@ -9,6 +9,7 @@ from scipy import stats, ndimage, integrate
 import warnings
 import os
 from skimage import feature
+import statistics
 
 
 # Implement the data structure
@@ -601,27 +602,19 @@ class LineMeasurement(BaseMeasurement):
 
         plt.show()
 
-    def detect_domain_walls(self, sigma=3):
-        return feature.canny(self.GetDataSubset(plotGroup=1, stack='PR').values, sigma)
+    def detect_domain_walls(self, sigma=3, stack='Phase'):
+        return feature.canny(self.GetDataSubset(plotGroup=1, stack=stack).values, sigma)
 
     def find_distances(self, domain_walls=None):
         if domain_walls is None:
             domain_walls = self.detect_domain_walls()
         num_rows = domain_walls.shape[0]
         num_cols = domain_walls.shape[1]
-        min_distances = np.empty((num_rows, num_cols))
-        gaussian_distances = np.empty((num_rows, num_cols))
-        # stdev_distances = np.empty((num_rows, num_cols))
-        master = otherfunctions.generate_dist_master((num_rows, num_cols))
-        gaussian_kernel = otherfunctions.generate_gaussian_kernel((num_rows, num_cols), 3)
+        distances = np.empty((num_rows, num_cols))
+        master = otherfunctions.generate_distance_kernel((num_rows, num_cols))
         for row in range(num_rows):
             for col in range(num_cols):
                 sub_master = master[num_rows - 1 - row:2 * num_rows - 1 - row,
-                             num_cols - 1 - col:2 * num_cols - 1 - col]
-                min_distances[row, col] = np.min(sub_master[domain_walls])
-                sub_gaussian = gaussian_kernel[num_rows - 1 - row:2 * num_rows - 1 - row,
-                               num_cols - 1 - col:2 * num_cols - 1 - col]
-                combined = sub_gaussian * sub_master
-                gaussian_distances[row, col] = np.sum(combined[domain_walls])
-                # stdev_distances[row, col] = statistics.stdev(sorted(sub_master[domain_walls])[:10])
-        return min_distances, gaussian_distances
+                                    num_cols - 1 - col:2 * num_cols - 1 - col]
+                distances[row, col] = np.min(sub_master[domain_walls])
+        return distances
