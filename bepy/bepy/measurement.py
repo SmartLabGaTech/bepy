@@ -421,7 +421,8 @@ class GridMeasurement(BaseMeasurement):
             else:
                 return branch_v, branch_r_2, branch_r_1
 
-    def extract_sspfm_parameters(self, index, horz_spread=20, vert_spread=2, second_loop=True, inout=0, stack='PR'):
+    def extract_sspfm_parameters(self, index, horz_spread=20, vert_spread=2, second_loop=True, inout=0, stack='PR',
+                                 plot_ax=None, show_legend=False):
         v, r_up, r_down = self.split_loop(index, second_loop, inout, stack)
         try:
             v_diff = np.diff(v)
@@ -436,8 +437,13 @@ class GridMeasurement(BaseMeasurement):
             r_down_slopes_filtered = abs(ndimage.filters.gaussian_filter(list(r_down_slopes), 1, mode='reflect'))
             r_down_max_slopes_filtered_idx = np.argmax(r_down_slopes_filtered)
 
-            r_s_pos = r_up[np.argmax(v)]  # r_up and r_down have the same first and last point
-            r_s_neg = r_up[np.argmin(v)]
+            # r_up and r_down have the same first and last point
+            max_v_idx = np.argmax(v)
+            min_v_idx = np.argmin(v)
+            v_s_pos = v[max_v_idx]
+            r_s_pos = r_up[max_v_idx]
+            v_s_neg = v[min_v_idx]
+            r_s_neg = r_up[min_v_idx]
 
             vert_left_m, vert_left_b, _, _, _ = stats.linregress(
                 v[r_up_max_slopes_filtered_idx - vert_spread:r_up_max_slopes_filtered_idx + vert_spread + 1],
@@ -453,14 +459,42 @@ class GridMeasurement(BaseMeasurement):
             min_abs_v = np.argmin(abs(v))
             horz_upper_m, horz_upper_b, _, _, _ = stats.linregress(v[-horz_spread:], r_up[-horz_spread:])
             horz_lower_m, horz_lower_b, _, _, _ = stats.linregress(v[:horz_spread], r_down[:horz_spread])
-            v_c_pos, _ = self.intersect_lines(horz_lower_m, horz_lower_b, vert_right_m, vert_right_b)
-            v_c_neg, _ = self.intersect_lines(horz_upper_m, horz_upper_b, vert_left_m, vert_left_b)
+            v_c_pos, r_c_pos = self.intersect_lines(horz_lower_m, horz_lower_b, vert_right_m, vert_right_b)
+            v_c_neg, r_c_neg = self.intersect_lines(horz_upper_m, horz_upper_b, vert_left_m, vert_left_b)
             _, r_0_pos, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], r_up[min_abs_v - 2:min_abs_v + 4])
             _, r_0_neg, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], r_down[min_abs_v - 2:min_abs_v + 4])
 
             r_s = r_s_pos - r_s_neg
             imprint = 0.5 * (v_pos + v_neg)
             area = integrate.trapz(r_up - r_down, x=v)
+
+            if plot_ax is not None:
+                plot_ax.plot(v, r_up, '-k')
+                plot_ax.plot(v, r_down, '-k')
+                plot_ax.set_xlabel('Voltage (V)')
+                plot_ax.set_ylabel('PR (a.u.)')
+
+                x_left = v[r_up_max_slopes_filtered_idx-15:r_up_max_slopes_filtered_idx+16]
+                x_right = v[r_down_max_slopes_filtered_idx-15:r_down_max_slopes_filtered_idx+16]
+                plot_ax.plot(x_left, vert_left_m * x_left + vert_left_b, '--r')
+                plot_ax.plot(x_right, vert_right_m * x_right + vert_right_b, '--r')
+
+                # x_up = np.concatenate((voltage[min_abs_v[0] - 30:], voltage[:min_abs_v[0] + 30]))
+                # x_down = voltage[min_abs_v[2] - 30:min_abs_v[2] + 30]
+                x = np.array([min(v), max(v)])
+                plot_ax.plot(x, horz_upper_m * x + horz_upper_b, '--r')
+                plot_ax.plot(x, horz_lower_m * x + horz_lower_b, '--r')
+
+                line1, = plot_ax.plot([0, 0], [r_0_pos, r_0_neg], 'k*')
+                line2, = plot_ax.plot([v_s_pos, v_s_neg], [r_s_pos, r_s_neg], 'ko')
+                line3, = plot_ax.plot([v_pos, v_neg], [0, 0], 'ks')
+                line4, = plot_ax.plot([v_c_pos, v_c_neg], [r_c_pos, r_c_neg], 'kd')
+                plot_ax.set_ylim(np.min(r_up) * 1.2, np.max(r_up) * 1.2)
+
+                if show_legend:
+                    plot_ax.legend((line1, line2, line3, line4), ('Remanent', 'Saturated', 'Coercive', 'Nucleation'),
+                                   loc='lower right')
+
             return {'Area': area, 'R0+': r_0_pos, 'R0-': r_0_neg, 'Rs+': r_s_pos, 'Rs-': r_s_neg, 'V+': v_pos,
                     'V-': v_neg, 'Vc+': v_c_pos, 'Vc-': v_c_neg, 'Imprint': imprint, 'Rs': r_s}
         except Exception as exc:
@@ -507,6 +541,13 @@ class GridMeasurement(BaseMeasurement):
         self.analysis['Vc-'] = v_c_neg
         self.analysis['Imprint'] = imprint
         self.analysis['Rs'] = r_s
+
+    def plot_loop(self, index, plot_ax, second_loop=True, inout=0, stack='PR'):
+        v, r_up, r_down = self.split_loop(index, second_loop, inout, stack)
+        plot_ax.plot(v, r_up, '-k')
+        plot_ax.plot(v, r_down, '-k')
+        plot_ax.set_xlabel('Voltage (V)')
+        plot_ax.set_ylabel('PR (a.u.)')
 
     def save_analysis(self):
         if self.path is not None:
@@ -593,8 +634,8 @@ class LineMeasurement(BaseMeasurement):
             sub = plt.subplot(rows, cols, i + 1)
             minimum = np.mean(plot_data) - 1.5 * np.std(plot_data)
             maximum = np.mean(plot_data) + 1.5 * np.std(plot_data)
-            plot = sub.imshow(plot_data, cmap='viridis', vmin=minimum, vmax=maximum)
-            plt.colorbar(plot, ax=sub)
+            img = sub.imshow(plot_data, cmap='inferno', vmin=minimum, vmax=maximum)
+            plt.colorbar(img, ax=sub)
             sub.set_title(var)
 
         if saveName is not None:
