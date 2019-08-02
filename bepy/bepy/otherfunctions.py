@@ -82,11 +82,9 @@ def generate_distance_kernel(shape):
 def generate_template_grid(img_side_length, grid_size):
     img = np.zeros((img_side_length, img_side_length))
     buffer_pixels = (img_side_length - grid_size) / (grid_size - 1)
-
     for row in range(grid_size):
         for col in range(grid_size):
-            img[int(round(row + buffer_pixels * (row))), int(round(col + buffer_pixels * (col)))] = 1
-
+            img[int(round(row + buffer_pixels * row)), int(round(col + buffer_pixels * col))] = 1
     return img == 1
 
 
