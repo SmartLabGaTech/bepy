@@ -9,7 +9,6 @@ from scipy import stats, ndimage, integrate
 import warnings
 import os
 from skimage import feature
-import statistics
 
 
 # Implement the data structure
@@ -34,6 +33,10 @@ class BaseMeasurement:
     @property
     def data(self):
         return self._data
+
+    @property
+    def meas_type(self):
+        return self._meas_type
 
     def __init__(self, shodata=None, parameters=None, xaxis=None, adjustphase=True):
 
@@ -150,6 +153,7 @@ class BaseMeasurement:
             else:
                 allData.to_csv(saveName+'_' + str(i) + '.csv')
 
+
 # Implement Grid and Line measurements
 class GridMeasurement(BaseMeasurement):
 
@@ -158,10 +162,6 @@ class GridMeasurement(BaseMeasurement):
     @property
     def gridSize(self):
         return self._gridSize
-    
-    @property
-    def measurementName(self):
-        return self._measurementName
 
     @property
     def acqXaxis(self):
@@ -193,7 +193,7 @@ class GridMeasurement(BaseMeasurement):
         
         BaseMeasurement.__init__(self, shodata, parameters, xaxis=self._acqXaxis, adjustphase=adjustphase)
 
-        self._measurementName = measType
+        self._meas_type = measType
         self._gridSize = gridSize
         self.add_rc()
         if os.path.isfile(self.path / 'analysis.csv'):
@@ -242,13 +242,13 @@ class GridMeasurement(BaseMeasurement):
 
             sub = plt.subplot(rows, cols, i + 1)
 
-            if self.measurementName == 'SSPFM':
+            if self.meas_type == 'SSPFM':
                 sub.plot(xaxis, plot_data)
                 sub.set_xlabel('DC Volt (V)')
-            elif self.measurementName == 'NonLin':
+            elif self.meas_type == 'NonLin':
                 sub.plot(xaxis, plot_data)
                 sub.set_xlabel('AC Volt (V)')
-            elif self.measurementName == 'Relax':
+            elif self.meas_type == 'Relax':
                 sub.plot(xaxis, plot_data)
                 sub.set_xlabel('Time (s)')
 
@@ -322,8 +322,7 @@ class GridMeasurement(BaseMeasurement):
 
     def movie(self, variables=None, InOut=0.0, plotgroup=None, saveName='movie.mp4', resolution=10, figsize=(15, 8)):
 
-        metadata = dict(title=self.measurementName, artist='Matplotlib',
-                        comment='')
+        metadata = dict(title=self.meas_type, artist='Matplotlib', comment='')
         writer = FFMpegWriter(fps=15, metadata=metadata)
 
         fig = plt.figure(figsize=figsize)
@@ -485,8 +484,6 @@ class GridMeasurement(BaseMeasurement):
                 plot_ax.plot(x_left, vert_left_m * x_left + vert_left_b, '--r')
                 plot_ax.plot(x_right, vert_right_m * x_right + vert_right_b, '--r')
 
-                # x_up = np.concatenate((voltage[min_abs_v[0] - 30:], voltage[:min_abs_v[0] + 30]))
-                # x_down = voltage[min_abs_v[2] - 30:min_abs_v[2] + 30]
                 x = np.array([min(v), max(v)])
                 plot_ax.plot(x, horz_upper_m * x + horz_upper_b, '--r')
                 plot_ax.plot(x, horz_lower_m * x + horz_lower_b, '--r')
@@ -568,7 +565,7 @@ class GridMeasurement(BaseMeasurement):
     def load_analysis(self):
         if self.path is not None:
             if os.path.isfile(self.path / 'analysis.csv'):
-                self._analysis = pd.read_csv(os.path.join(self.path, 'SSPFM_analysis.csv'))
+                self._analysis = pd.read_csv(os.path.join(self.path, 'analysis.csv'))
                 self._analysis = self._analysis.set_index('Acq')
             else:
                 warnings.warn('Saved SSPFM analysis file does not exist.')
@@ -579,9 +576,6 @@ class GridMeasurement(BaseMeasurement):
 
 class LineMeasurement(BaseMeasurement):
 
-    @property
-    def measurementName(self):
-        return self._measurementName
 
     def __init__(self, path=None, name='Scan', adjustphase=True):
 
@@ -593,7 +587,7 @@ class LineMeasurement(BaseMeasurement):
 
         BaseMeasurement.__init__(self, shodata, parameters, xaxis=None, adjustphase=adjustphase)
 
-        self._measurementName = name
+        self._meas_type = name
 
     def plot(self, variables=None, fold=False, saveName=None, clean=False, plotgroup=None):
         if variables is None:
