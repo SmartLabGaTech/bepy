@@ -399,8 +399,8 @@ class GridMeasurement(BaseMeasurement):
         else:
             return branch_v, branch_pr_2, branch_pr_1
 
-    def plot_loop(self, index, plot_ax, second_loop=False, inout=0, stack='PR'):
-        v, pr_up, pr_down = self.split_loop(index, second_loop, inout, stack)
+    def plot_loop(self, index, plot_ax, loop_start=0, loop_end=-2, inout=0, stack='PR'):
+        v, pr_up, pr_down = self.split_loop(index, loop_start=loop_start, loop_end=loop_end, inout=inout, stack=stack)
         plot_ax.plot(v, pr_up, '-k')
         plot_ax.plot(v, pr_down, '-k')
         plot_ax.set_xlabel('Voltage (V)')
