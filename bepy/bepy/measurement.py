@@ -5,7 +5,6 @@ from matplotlib.animation import FFMpegWriter
 import copy
 from . import otherfunctions
 from pathlib import Path
-from scipy import stats, ndimage, integrate
 import warnings
 import os
 from skimage import feature
@@ -379,174 +378,26 @@ class GridMeasurement(BaseMeasurement):
         self._data['r'] = pd.Series(np.sort(np.tile(np.arange(self._gridSize), self._gridSize)), index=self._data.index)
         self._data['c'] = pd.Series(np.tile(np.arange(self._gridSize), self._gridSize), index=self._data.index)
 
-    @staticmethod
-    def intersect_lines(m1, b1, m2, b2):
-        x = (b2 - b1) / (m1 - m2)
-        y = m1 * x + b1
-        return x, y
-
-    def split_loop(self, index, second_loop=False, inout=0, stack='PR', down_up=True):
-        full_v = self.GetDataSubset(inout=inout, stack=stack).columns.get_level_values(3).values
-        full_pr = self.GetDataSubset(inout=inout, stack=stack).iloc[index].values
-        middle_index = int(len(full_pr) / 2)
-        if second_loop:
-            half_v = full_v[middle_index:-1]  # Out-of-field loops have an extra point at the end.
-            half_pr = full_pr[middle_index:-1]  # if this is changed, the -1 will need to be removed...
+    def split_loop(self, index, loop_start=0, loop_end=-2, inout=0, stack='PR'):
+        v = self.GetDataSubset(inout=inout, stack=stack).columns.get_level_values(3).values[loop_start:loop_end + 1]
+        pr = self.GetDataSubset(inout=inout, stack=stack).iloc[index].values[loop_start:loop_end + 1]
+        min_idx = np.argmin(v)
+        max_idx = np.argmax(v)
+        if min_idx < max_idx:
+            branch_v = v[min_idx:max_idx + 1]
+            branch_pr_1 = pr[min_idx:max_idx + 1]
+            branch_pr_2 = np.concatenate((pr[:min_idx + 1][::-1], pr[max_idx:][::-1]))
         else:
-            half_v = full_v[:middle_index]
-            half_pr = full_pr[:middle_index]
-
-        # Triangular down up
-        if down_up:
-            min_idx = np.argmin(half_v)
-            max_idx = np.argmax(half_v)
-            branch_v = half_v[min_idx:max_idx + 1]
-            branch_pr_1 = half_pr[min_idx:max_idx + 1]
-            branch_pr_2 = np.concatenate((half_pr[:min_idx + 1][::-1], half_pr[max_idx:][::-1]))
-            if np.mean(branch_pr_1) > np.mean(branch_pr_2):
-                return branch_v.astype(float), branch_pr_1.astype(float), branch_pr_2.astype(float)
-            else:
-                return branch_v.astype(float), branch_pr_2.astype(float), branch_pr_1.astype(float)
-
-        # Triangular up down
+            branch_v = np.concatenate((v[min_idx:], v[:max_idx + 1]))
+            branch_pr_1 = pr[max_idx:min_idx + 1][::-1]
+            branch_pr_2 = np.concatenate((pr[min_idx:], pr[:max_idx + 1]))
+        branch_v = branch_v.astype(np.float)
+        branch_pr_1 = branch_pr_1.astype(np.float)
+        branch_pr_2 = branch_pr_2.astype(np.float)
+        if np.mean(branch_pr_1) > np.mean(branch_pr_2):
+            return branch_v, branch_pr_1, branch_pr_2
         else:
-            min_idx = np.argmin(half_v)
-            max_idx = np.argmax(half_v)
-            branch_v = half_v[max_idx:min_idx + 1]
-            branch_pr_1 = half_pr[max_idx:min_idx + 1]
-            branch_pr_2 = np.concatenate((half_pr[:max_idx + 1][::-1], half_pr[min_idx:][::-1]))
-            if np.mean(branch_pr_1) > np.mean(branch_pr_2):
-                return branch_v, branch_pr_1, branch_pr_2
-            else:
-                return branch_v, branch_pr_2, branch_pr_1
-
-    def extract_sspfm_parameters(self, index, horz_spread=20, vert_spread=2, second_loop=False, inout=0, stack='PR',
-                                 plot_ax=None, show_legend=False):
-        v, pr_up, pr_down = self.split_loop(index, second_loop, inout, stack)
-        try:
-            v_diff = np.diff(v)
-
-            pr_up_diff = np.diff(pr_up)
-            pr_up_slopes = np.add(pr_up_diff[1:], pr_up_diff[:-1]) / np.add(v_diff[1:], v_diff[:-1])
-            pr_up_slopes_filtered = abs(ndimage.filters.gaussian_filter(list(pr_up_slopes), 1, mode='reflect'))
-            pr_up_max_slopes_filtered_idx = np.argmax(pr_up_slopes_filtered)
-
-            pr_down_diff = np.diff(pr_down)
-            pr_down_slopes = np.add(pr_down_diff[1:], pr_down_diff[:-1]) / np.add(v_diff[1:], v_diff[:-1])
-            pr_down_slopes_filtered = abs(ndimage.filters.gaussian_filter(list(pr_down_slopes), 1, mode='reflect'))
-            pr_down_max_slopes_filtered_idx = np.argmax(pr_down_slopes_filtered)
-
-            # pr_up and pr_down have the same first and last point
-            max_v_idx = np.argmax(v)
-            min_v_idx = np.argmin(v)
-            v_sat_pos = v[max_v_idx]
-            pr_sat_pos = pr_up[max_v_idx]
-            v_sat_neg = v[min_v_idx]
-            pr_sat_neg = pr_up[min_v_idx]
-
-            vert_left_m, vert_left_b, _, _, _ = stats.linregress(
-                v[pr_up_max_slopes_filtered_idx - vert_spread:pr_up_max_slopes_filtered_idx + vert_spread + 1],
-                pr_up[pr_up_max_slopes_filtered_idx - vert_spread:pr_up_max_slopes_filtered_idx + vert_spread + 1])
-            vert_right_m, vert_right_b, _, _, _ = stats.linregress(v[pr_down_max_slopes_filtered_idx - vert_spread:
-                                                                     pr_down_max_slopes_filtered_idx + vert_spread + 1]
-                                                                   [::-1],
-                pr_down[pr_down_max_slopes_filtered_idx - vert_spread:
-                       pr_down_max_slopes_filtered_idx + vert_spread + 1][::-1])
-            v_c_pos = -vert_right_b / vert_right_m
-            v_c_neg = -vert_left_b / vert_left_m
-
-            min_abs_v = np.argmin(abs(v))
-            horz_upper_m, horz_upper_b, _, _, _ = stats.linregress(v[-horz_spread:], pr_up[-horz_spread:])
-            horz_lower_m, horz_lower_b, _, _, _ = stats.linregress(v[:horz_spread], pr_down[:horz_spread])
-            v_nuc_pos, pr_nuc_pos = self.intersect_lines(horz_lower_m, horz_lower_b, vert_right_m, vert_right_b)
-            v_nuc_neg, pr_nuc_neg = self.intersect_lines(horz_upper_m, horz_upper_b, vert_left_m, vert_left_b)
-
-            if second_loop:
-                _, pr_rem_pos, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], pr_up[min_abs_v - 2:min_abs_v + 4])
-                _, pr_rem_neg, _, _, _ = stats.linregress(v[min_abs_v - 2:min_abs_v + 4], pr_down[min_abs_v - 2:min_abs_v + 4])
-            else:
-                # assumes down-up triangular waveform
-                pr_rem_pos = pr_up[min_abs_v+1]
-                pr_rem_neg = pr_down[min_abs_v]
-
-            pr_s = pr_sat_pos - pr_sat_neg
-            imprint = 0.5 * (v_c_pos + v_c_neg)
-            area = integrate.trapz(pr_up - pr_down, x=v)
-
-            if plot_ax is not None:
-                plot_ax.plot(v, pr_up, '-k')
-                plot_ax.plot(v, pr_down, '-k')
-                plot_ax.set_xlabel('Voltage (V)')
-                plot_ax.set_ylabel('PR (a.u.)')
-
-                x_left = v[pr_up_max_slopes_filtered_idx-15:pr_up_max_slopes_filtered_idx+16]
-                x_right = v[pr_down_max_slopes_filtered_idx-15:pr_down_max_slopes_filtered_idx+16]
-                plot_ax.plot(x_left, vert_left_m * x_left + vert_left_b, '--r')
-                plot_ax.plot(x_right, vert_right_m * x_right + vert_right_b, '--r')
-
-                x = np.array([min(v), max(v)])
-                plot_ax.plot(x, horz_upper_m * x + horz_upper_b, '--r')
-                plot_ax.plot(x, horz_lower_m * x + horz_lower_b, '--r')
-
-                line1, = plot_ax.plot([0, 0], [pr_rem_pos, pr_rem_neg], 'k*')
-                line2, = plot_ax.plot([v_sat_pos, v_sat_neg], [pr_sat_pos, pr_sat_neg], 'ko')
-                line3, = plot_ax.plot([v_c_pos, v_c_neg], [0, 0], 'ks')
-                line4, = plot_ax.plot([v_nuc_pos, v_nuc_neg], [pr_nuc_pos, pr_nuc_neg], 'kd')
-                plot_ax.set_ylim(np.min(pr_up) * 1.2, np.max(pr_up) * 1.2)
-
-                if show_legend:
-                    plot_ax.legend((line1, line2, line3, line4), ('Remanent', 'Saturated', 'Coercive', 'Nucleation'),
-                                   loc='lower right')
-
-            return {'Area': area, 'PRrem+': pr_rem_pos, 'PRrem-': pr_rem_neg, 'PRsat+': pr_sat_pos,
-                    'PRsat-': pr_sat_neg, 'Vc+': v_c_pos, 'Vc-': v_c_neg, 'Vnuc+': v_nuc_pos, 'Vnuc-': v_nuc_neg,
-                    'Imprint': imprint, 'PRs': pr_s}
-
-        except Exception as exc:
-            print(exc)
-            return {'Area': np.nan, 'PRrem+': np.nan, 'PRrem-': np.nan, 'PRsat+': np.nan, 'PRsat-': np.nan,
-                    'Vc+': np.nan, 'Vc-': np.nan, 'Vnuc+': np.nan, 'Vnuc-': np.nan, 'Imprint': np.nan, 'PRs': np.nan}
-
-    def extract_all_sspfm_parameters(self, horz_spread=20, vert_spread=2, second_loop=False):
-        num_rows = len(self.data.index)
-        area = np.zeros(num_rows)
-        pr_rem_pos = np.zeros(num_rows)
-        pr_rem_neg = np.zeros(num_rows)
-        pr_sat_pos = np.zeros(num_rows)
-        pr_sat_neg = np.zeros(num_rows)
-        v_c_pos = np.zeros(num_rows)
-        v_c_neg = np.zeros(num_rows)
-        v_nuc_pos = np.zeros(num_rows)
-        v_nuc_neg = np.zeros(num_rows)
-        imprint = np.zeros(num_rows)
-        pr_s = np.zeros(num_rows)
-        for index in range(num_rows):
-            result = self.extract_sspfm_parameters(index, horz_spread=horz_spread, vert_spread=vert_spread,
-                                                   second_loop=second_loop)
-            area[index] = result['Area']
-            pr_rem_pos[index] = result['PRrem+']
-            pr_rem_neg[index] = result['PRrem-']
-            pr_sat_pos[index] = result['PRsat+']
-            pr_sat_neg[index] = result['PRsat-']
-            v_c_pos[index] = result['Vc+']
-            v_c_neg[index] = result['Vc-']
-            v_nuc_pos[index] = result['Vnuc+']
-            v_nuc_neg[index] = result['Vnuc-']
-            imprint[index] = result['Imprint']
-            pr_s[index] = result['PRs']
-            if np.mod(index, 100) == 0:
-                print('Progress: ' + str(index) + '/' + str(num_rows))
-        self.analysis['Area'] = area
-        self.analysis['PRrem+'] = pr_rem_pos
-        self.analysis['PRrem-'] = pr_rem_neg
-        self.analysis['PRsat+'] = pr_sat_pos
-        self.analysis['PRsat-'] = pr_sat_neg
-        self.analysis['Vc+'] = v_c_pos
-        self.analysis['Vc-'] = v_c_neg
-        self.analysis['Vnuc+'] = v_nuc_pos
-        self.analysis['Vnuc-'] = v_nuc_neg
-        self.analysis['Imprint'] = imprint
-        self.analysis['PRs'] = pr_s
+            return branch_v, branch_pr_2, branch_pr_1
 
     def plot_loop(self, index, plot_ax, second_loop=False, inout=0, stack='PR'):
         v, pr_up, pr_down = self.split_loop(index, second_loop, inout, stack)
@@ -575,7 +426,6 @@ class GridMeasurement(BaseMeasurement):
 
 
 class LineMeasurement(BaseMeasurement):
-
 
     def __init__(self, path=None, name='Scan', adjustphase=True):
 

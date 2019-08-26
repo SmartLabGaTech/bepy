@@ -98,3 +98,9 @@ def center_phase(single_phase_loop):
     loop1 = single_phase_loop - min(single_phase_loop)
     loop2 = loop1 - max(loop1)/2
     return loop2
+
+
+def intersect_lines(m1, b1, m2, b2):
+    x = (b2 - b1) / (m1 - m2)
+    y = m1 * x + b1
+    return x, y
