@@ -66,7 +66,7 @@ def normalize_image(img):
     return (img - np.nanmin(img)) / (np.nanmax(img) - np.nanmin(img))
 
 
-def generate_dist_master(shape):
+def generate_distance_kernel(shape):
     num_rows = shape[0]
     num_cols = shape[1]
     master_num_rows = 2*num_rows-1
@@ -79,24 +79,12 @@ def generate_dist_master(shape):
     return dist_master
 
 
-def generate_gaussian_kernel(shape, sigma):
-    num_rows = shape[0]
-    num_cols = shape[1]
-    kernel_num_rows = 2 * num_rows - 1
-    kernel_num_cols = 2 * num_cols - 1
-    kernel = np.zeros((kernel_num_rows, kernel_num_cols))
-    kernel[num_rows, num_cols] = 1
-    return filters.gaussian_filter(kernel, sigma=sigma)
-
-
 def generate_template_grid(img_side_length, grid_size):
     img = np.zeros((img_side_length, img_side_length))
     buffer_pixels = (img_side_length - grid_size) / (grid_size - 1)
-
     for row in range(grid_size):
         for col in range(grid_size):
-            img[int(round(row + buffer_pixels * (row))), int(round(col + buffer_pixels * (col)))] = 1
-
+            img[int(round(row + buffer_pixels * row)), int(round(col + buffer_pixels * col))] = 1
     return img == 1
 
 
@@ -110,3 +98,9 @@ def center_phase(single_phase_loop):
     loop1 = single_phase_loop - min(single_phase_loop)
     loop2 = loop1 - max(loop1)/2
     return loop2
+
+
+def intersect_lines(m1, b1, m2, b2):
+    x = (b2 - b1) / (m1 - m2)
+    y = m1 * x + b1
+    return x, y

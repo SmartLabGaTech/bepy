@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from bepy import analysis
+from . import analysis
 
 
 class SampleSet:
