@@ -208,7 +208,7 @@ class GridMeasurement(BaseMeasurement):
         if type(pointNum) is tuple:
             pointNum = (pointNum[0] - 1) * self.gridSize + pointNum[1]
 
-        subset = self.GetDataSubset(inout=InOut, plotGroup=plotgroup, insert=insert)
+        subset = self.GetDataSubset(stack=variables, inout=InOut, plotGroup=plotgroup, insert=insert)
         num_vars = len(variables)
         rows = ((num_vars - 1) // 4) + 1
         if num_vars > 4:
