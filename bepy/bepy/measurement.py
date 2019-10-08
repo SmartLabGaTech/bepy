@@ -439,7 +439,7 @@ class LineMeasurement(BaseMeasurement):
 
         self._meas_type = name
 
-    def plot(self, variables=None, fold=False, saveName=None, clean=False, plotgroup=None):
+    def plot(self, variables=None, fold=False, saveName=None, clean=False, plotgroup=None, lims=None):
         if variables is None:
             variables = ['Amp', 'Phase', 'Res', 'Q']
 
@@ -484,9 +484,14 @@ class LineMeasurement(BaseMeasurement):
             if var == 'Phase':
                 plot_data = np.multiply(plot_data, 180 / np.pi)
 
+            if lims is None:
+                minimum = np.mean(plot_data) - 1.5 * np.std(plot_data)
+                maximum = np.mean(plot_data) + 1.5 * np.std(plot_data)
+            else:
+                minimum = lims[0][i]
+                maximum = lims[1][i]
+
             sub = plt.subplot(rows, cols, i + 1)
-            minimum = np.mean(plot_data) - 1.5 * np.std(plot_data)
-            maximum = np.mean(plot_data) + 1.5 * np.std(plot_data)
             img = sub.imshow(plot_data, cmap='inferno', vmin=minimum, vmax=maximum)
             plt.colorbar(img, ax=sub)
             sub.set_title(var)
