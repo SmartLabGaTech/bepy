@@ -233,6 +233,8 @@ class GridMeasurement(BaseMeasurement):
                 ylabel = var + r' ($\degree$)'
             elif var == 'Q':
                 ylabel = var
+            elif var == 'PR':
+                ylabel = 'Piezoresponse (a.u.)'
 
             if pointNum is None:
                 plot_data = data.mean().values
