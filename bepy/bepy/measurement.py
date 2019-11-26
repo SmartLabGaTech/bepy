@@ -116,6 +116,35 @@ class BaseMeasurement:
             return_data.T[mask] = insert
             return return_data[stack]
 
+    def SetDataSubset(self, set_vals, inout=0.0, plotGroup=None, stack=None, clean=False):
+
+        if stack is None:
+            stack = ['Amp', 'Phase', 'Res', 'Q']
+
+        inout_vals = self._data[stack].columns.get_level_values(level='InOut')
+        plotGroup_vals = self._data[stack].columns.get_level_values(level='PlotGroup')
+
+        if inout is None:
+            inout_mask = np.ones(inout_vals.shape)
+        else:
+            inout_mask = inout_vals == inout
+
+        if plotGroup is None:
+            pg_mask = np.ones(plotGroup_vals.shape)
+        else:
+            pg_mask = plotGroup_vals == plotGroup
+
+        mask = np.logical_and(inout_mask, pg_mask)
+
+        if clean:
+            cleanmask = self._acq_flags
+        else:
+            cleanmask = np.full(self._acq_flags.shape, False)
+
+        old = self.data[stack].loc[:, mask]
+        new = pd.DataFrame(set_vals, index=old.index, columns=old.columns)
+        self._data.update(new)
+
     def clean(self, sensitivity=3, var=None, plot=False):
 
         if var is None:
@@ -503,8 +532,10 @@ class LineMeasurement(BaseMeasurement):
 
         plt.show()
 
-    def detect_domain_walls(self, sigma=3, stack='Phase'):
-        return feature.canny(self.GetDataSubset(plotGroup=1, stack=stack).values, sigma)
+    def detect_domain_walls(self, sigma=0, stack='Phase', hard_lim=4):
+        data_temp = self.GetDataSubset(plotGroup=1, stack=stack).values
+        binary_data = data_temp > hard_lim
+        return feature.canny(binary_data, sigma)
 
     def find_distances(self, domain_walls=None):
         if domain_walls is None:
