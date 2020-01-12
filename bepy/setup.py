@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='bepy',
-      version='v1.0-a',
+      version='v1.0-a1',
       description="A framework for materials characterization data collected that facilitates post analysis",
       url='https://github.com/lgriffin39/bepy',
       author='Lee Griffin',

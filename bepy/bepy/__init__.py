@@ -21,6 +21,7 @@ from .sample import *
 from .sampleset import *
 from .analysis import *
 from .otherfunctions import *
+from .fitting import *
 
 # module level doc-string
 __doc__ = """
