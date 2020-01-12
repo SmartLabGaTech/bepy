@@ -75,7 +75,7 @@ class SampleSet:
         return pd.DataFrame(stackreturn.values, index=index, columns=stackreturn.columns), samp_flags
 
     def fit(self, model, sampstack=None, measstack=None, varstack=['Amp', 'Phase', 'Res', 'Q'], inout=0.0,
-            plotGroup=None, insert=None, clean=False, custom=None, custom_flags=None, custom_ind=None, custom_cols=None):
+            plotGroup=None, insert=None, clean=False, umap=False, targets=None, custom=None, custom_flags=None, custom_ind=None, custom_cols=None):
 
         if custom is None:
             data, samp_flags = self.GetSampStack(sampstack, measstack, varstack, inout, plotGroup, insert, clean=clean)
@@ -90,11 +90,16 @@ class SampleSet:
 
         indata[np.where(indata==np.inf)] = 0
         indata[np.where(indata==np.nan)] = 0
-        
-        maps = model.fit_transform(indata)
-        fitted = model.fit(indata)
 
-        components = model.components_
+        if umap:
+            maps = model.fit_transform(indata, y=targets)
+            fitted = model.fit(indata, y=targets)
+            components = np.dot(maps.T,indata)
+        else:
+            maps = model.fit_transform(indata)
+            fitted = model.fit(indata)
+
+            components = model.components_
         
         mapframe = pd.DataFrame(maps, index=inds)
         compframe = pd.DataFrame(components, columns=cols)

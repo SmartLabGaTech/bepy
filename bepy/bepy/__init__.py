@@ -1,7 +1,7 @@
 #Check dependencies
 from typing import List
 
-hard_dependencies = ("numpy", "pandas")
+hard_dependencies = ("numpy", "pandas","lmfit")
 missing_dependencies=[]  # type: List[str]
 
 for dependency in hard_dependencies:
