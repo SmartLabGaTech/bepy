@@ -1,7 +1,7 @@
-from nptdms import TdmsFile       #For reading LabView files
-import numpy as np                #for numerical operations
-import pandas as pd               #for data reading/structure
-import matplotlib.pyplot as plt          #Used for plotting
+from nptdms import TdmsFile  # For reading LabView files
+import numpy as np  # for numerical operations
+import pandas as pd  # for data reading/structure
+import matplotlib.pyplot as plt  # Used for plotting
 from scipy.optimize import curve_fit
 import scipy.signal as signal
 from lmfit import Model, Parameters, minimize
@@ -9,49 +9,48 @@ import lmfit as lm
 from functools import partial
 import sys
 
+
 # Pass the frequency spectrum for a chirp and the frequnecy axis, and this function will return a guess for the
 # SHO fit
 def getSHOguess(chirpData, freq):
+    # Get amplitude and phase
+    amp = np.abs(chirpData)
+    phase = np.angle(chirpData)
 
-    #Get amplitude and phase
-    amp=np.abs(chirpData)
-    phase=np.angle(chirpData)
+    # -----------------Get some guesses for the fitting-----------------
+    resGuess = np.argmax(amp)
+    res = freq[resGuess]
+    ampGuess = amp[resGuess]
 
-    #-----------------Get some guesses for the fitting-----------------
-    resGuess=np.argmax(amp)
-    res=freq[resGuess]
-    ampGuess=amp[resGuess]
+    # Start by estimating the full width half max
+    ampHalfMax = ampGuess / 2
 
-    #Start by estimating the full width half max
-    ampHalfMax=ampGuess/2
-
-    #First find the inidices (left and right) where the value is half the maximum
-    #An error is thrown is these indicies or outside the range of the data
+    # First find the inidices (left and right) where the value is half the maximum
+    # An error is thrown is these indicies or outside the range of the data
     try:
-        leftFW=np.where(amp[0:resGuess]>ampHalfMax)
-        leftInd=leftFW[0][0]
+        leftFW = np.where(amp[0:resGuess] > ampHalfMax)
+        leftInd = leftFW[0][0]
     except IndexError:
-        leftInd=0
+        leftInd = 0
 
     try:
-        rightFW=np.where(amp[resGuess:]<ampHalfMax)
-        rightInd=rightFW[0][0]+resGuess
+        rightFW = np.where(amp[resGuess:] < ampHalfMax)
+        rightInd = rightFW[0][0] + resGuess
     except:
-        rightInd=len(amp)-1
+        rightInd = len(amp) - 1
 
+    FWHM = freq[rightInd] - freq[leftInd]
 
-    FWHM=freq[rightInd]-freq[leftInd]
-
-    temp=np.unwrap(phase)
-    phi=np.mod(temp[resGuess]+3*np.pi/2,2*np.pi)
-    Q=np.abs(res/FWHM)
+    temp = np.unwrap(phase)
+    phi = np.mod(temp[resGuess] + 3 * np.pi / 2, 2 * np.pi)
+    Q = np.abs(res / FWHM)
 
     if Q > 1000:
-        Q=500
+        Q = 500
 
-    a=ampGuess/Q
+    a = ampGuess / Q
 
-    xGuess=[a,phi,res,Q]
+    xGuess = [a, phi, res, Q]
 
     return xGuess
 
@@ -60,6 +59,7 @@ def getSHOguess(chirpData, freq):
 def complexGaus(x, a, phi, res, Q):
     func = a * np.exp(1j * phi) * res ** 2 / (x ** 2 - 1j * x * res / Q - res ** 2)
     return func
+
 
 # Amplitude of the complex gaussian
 def complexGausAmp(x, a, res, Q):
@@ -127,9 +127,11 @@ def smoothChirp(chirpData, freq):
 
     return smoothed, freq
 
+
 # This funcion "detrends" the data prior to fitting, if requested. I.e. it removes a linear background
 def remove_linear(chirpData):
     return signal.detrend(chirpData)
+
 
 # This function tries to trim the data according to the user-provided low and high frequency limits
 def attempt_trim(chirpData, freq, lowFreq, highFreq):
@@ -155,18 +157,22 @@ def attempt_trim(chirpData, freq, lowFreq, highFreq):
 
 # Perform the fit, initalize parameters, choose which data is actually fit, run it.
 # You can fit the: Real and imaginary data ('RealImag') or the Amplitude data ('Amp')
-def performFit(chirpData, freqData, guesses, fitType, acqNum, chirpNum):
+def performFit(chirpData, freqData, guesses, fitType, acqNum, chirpNum, print_report=False):
     if fitType is 'Amp':
         fitdata, params, phase = setupAmpFit(chirpData, freqData, guesses)
-        pfit, perr, failed, fail_msg, iterations = performAmpFit(fitdata, freqData, params, phase, acqNum, chirpNum)
-    if fitType is 'RealImag':
+        pfit, perr, failed, fail_msg, iterations = performAmpFit(fitdata, freqData, params, phase, acqNum, chirpNum,
+                                                                 print_report)
+    elif fitType is 'RealImag':
         fitdata, params = setupRealFit(chirpData, freqData, guesses)
-        pfit, perr, failed, fail_msg, iterations = performRealFit(fitdata, freqData, params, acqNum, chirpNum)
+        pfit, perr, failed, fail_msg, iterations = performRealFit(fitdata, freqData, params, acqNum, chirpNum,
+                                                                  print_report)
     else:
         fitdata, params = setupRealFit(chirpData, freqData, guesses)
-        pfit, perr, failed, fail_msg, iterations = performRealFit(fitdata, freqData, params, acqNum, chirpNum)
+        pfit, perr, failed, fail_msg, iterations = performRealFit(fitdata, freqData, params, acqNum, chirpNum,
+                                                                  print_report)
 
     return pfit, perr, failed, fail_msg, iterations
+
 
 # Set up a fit where we fit the real and imaginary data
 def setupRealFit(chirpData, freqData, xGuess):
@@ -191,8 +197,9 @@ def setupRealFit(chirpData, freqData, xGuess):
 
     return fitdata, params
 
+
 # Perform the real and imaginary data fit
-def performRealFit(data, freqData, params, acqNum, chirpNum):
+def performRealFit(data, freqData, params, acqNum, chirpNum, print_report):
     try:
         min_obj = lm.Minimizer(fitFunc, params, fcn_args=(freqData,), fcn_kws={
             'data': data})  # , fcn_args=(freqData,), fcn_kws={'data': data}, maxfev : 100000, ftol : 1e-9)
@@ -209,6 +216,8 @@ def performRealFit(data, freqData, params, acqNum, chirpNum):
         iterations = result.nfev
         failed = False
         fail_msg = None
+        if print_report:
+            sys.stderr.write(lm.fit_report(result).encode('ascii'))
         # save_report(savepath, result, acqNum, chirpNum)
     except Exception as e:
         iterations = np.nan
@@ -244,13 +253,16 @@ def setupAmpFit(chirpData, freqData, xGuess):
 
     return fitdata, params, dataPhase
 
+
 # Perform the fit to the amplitude fit
-def performAmpFit(data, freqData, params, dataPhase, acqNum, chirpNum):
+def performAmpFit(data, freqData, params, dataPhase, acqNum, chirpNum, print_report=False):
     try:
-        min_obj = lm.Minimizer(fitFuncAmp, params, fcn_args=(freqData,), fcn_kws={'data': data})
+        min_obj = lm.Minimizer(fitFuncAmp, params, fcn_args=(freqData,), fcn_kws={
+            'data': data})  # , fcn_args=(freqData,), fcn_kws={'data': data}, maxfev : 100000, ftol : 1e-9)
         # result = min_obj.leastsq(maxfev=100000, ftol=1e-7)
-        result = min_obj.minimize(fitFunc, params, method='leastsq', args=(freqData,), kws={'data': data},
-                                  maxfev=100000, ftol=1e-9)
+        # result = min_obj.minimize()
+        # result = min_obj.minimize(fitFunc, params, method='leastsq', args=(freqData,), kws={'data': data}, maxfev=100000, ftol=1e-9)
+        result = min_obj.minimize(maxfev=100000, ftol=1e-9)
 
         res = result.params['res'].value
         res_loc = np.where(np.logical_and(freqData > result.params['res'].value - result.params['res'].stderr,
@@ -262,7 +274,8 @@ def performAmpFit(data, freqData, params, dataPhase, acqNum, chirpNum):
                 result.params['Q'].value]  # ,result.params['Offset'].value]
         perr = [result.params['a'].stderr, 0, result.params['res'].stderr,
                 result.params['Q'].stderr]  # ,result.params['Offset'].stderr]
-
+        if print_report:
+            sys.stderr.write(lm.fit_report(result).encode('ascii'))
         iterations = result.nfev
         failed = False
         fail_msg = None
@@ -275,6 +288,7 @@ def performAmpFit(data, freqData, params, dataPhase, acqNum, chirpNum):
         perr = [np.inf, np.inf, np.inf, np.inf, np.inf]
         pfit = [np.inf, np.inf, np.inf, np.inf, np.inf]
     return pfit, perr, failed, fail_msg, iterations
+
 
 # Save a fit report for the provided fit result
 def save_report(savepath, result, acq, chirp, savename='fit_report.bin', msg=None):
@@ -292,21 +306,22 @@ def save_report(savepath, result, acq, chirp, savename='fit_report.bin', msg=Non
     # f.write(lm.fit_report(result))
     # f.close()
 
+
 def limFitData(data, freq, low, high):
+    upperLim = high
+    lowerLim = low
 
-    upperLim=high
-    lowerLim=low
-
-    #We cant extend past the data we actuall have!!
+    # We cant extend past the data we actuall have!!
     if upperLim > np.max(freq):
-        upperLim=np.max(freq)
+        upperLim = np.max(freq)
     if lowerLim < np.min(freq):
-        lowerLim=np.min(freq)
+        lowerLim = np.min(freq)
 
-    #Get the indicies where the data is within this range
-    indicies=np.where(np.logical_and(freq>lowerLim,freq<upperLim))
+    # Get the indicies where the data is within this range
+    indicies = np.where(np.logical_and(freq > lowerLim, freq < upperLim))
 
     return data[indicies], freq[indicies]
+
 
 # Fit a single chirp
 #   acqData: data for an entire acquistion
@@ -318,7 +333,7 @@ def limFitData(data, freq, low, high):
 #   chirp: the chirp number to fit
 #   fittype: Fit the real and imaginary data ('RealImag') or the amplitude data ('Amp')
 def fitChirp(acqData, lowFreq, highFreq, chirpMap=None, remove_background=False, smoothData=False, numAcq=0, chirp=0,
-             fittype='RealImag'):
+             fittype='RealImag', print_report=False):
     # Extract chirp and freq axis
     chirpData = acqData.xs(chirp)
 
@@ -369,7 +384,8 @@ def fitChirp(acqData, lowFreq, highFreq, chirpMap=None, remove_background=False,
         msg = 'Trimming Failed'
 
     # Perform the fit
-    pfit, perr, failed_fit, fail_msg, iterations = performFit(trimData, freqData, xGuess, fittype, numAcq, chirp)
+    pfit, perr, failed_fit, fail_msg, iterations = performFit(trimData, freqData, xGuess, fittype, numAcq, chirp,
+                                                              print_report)
 
     if failed_fit:
         flag = 1
@@ -379,6 +395,7 @@ def fitChirp(acqData, lowFreq, highFreq, chirpMap=None, remove_background=False,
             pfit[1], pfit[2], pfit[3], perr[0], perr[1], perr[2], perr[3], iterations, flag, msg]
 
     return data
+
 
 # Fits an entire acquisition
 #   responseFFT: the frequnecy response of the entire acquisition
@@ -406,8 +423,9 @@ def shoFit(responseFFT, numAcq, chirpMap=None, grid=None, lowFreq=None, highFreq
     # For each chirp in acquisition
     for chirp in chirpNames:
 
-        data = fitChirp(acqData, lowFreq, highFreq, chirpMap=chirpMap, remove_background=remove_background, smoothData=smoothData,
-                        numAcq=numAcq, chirp=chirp, fittype=fittype)
+        data = fitChirp(acqData, lowFreq, highFreq, chirpMap=chirpMap, remove_background=remove_background,
+                        smoothData=smoothData,
+                        numAcq=numAcq, chirp=chirp, fittype=fittype, print_report=False)
 
         try:
             outData = np.vstack([outData, data])
@@ -444,27 +462,31 @@ def shoFit(responseFFT, numAcq, chirpMap=None, grid=None, lowFreq=None, highFreq
 
     return extractedData
 
+
 # Wrapper around shoFit. Pull the data from the HDF store, get the spectrum, and pass it to shoFit
-def shoFitAcq(acqNum,fftFileName,chirpMap=None,grid=None,lowFreq=None,highFreq=None,smooth=None,remove_background=False, fittype='RealImag'):
-    #Get a path to the fft information
-    store=pd.HDFStore(fftFileName)
+def shoFitAcq(acqNum, fftFileName, chirpMap=None, grid=None, lowFreq=None, highFreq=None, smooth=None,
+              remove_background=False, fittype='RealImag'):
+    # Get a path to the fft information
+    store = pd.HDFStore(fftFileName)
 
-    #extract the data for this acquisition
-    spec=store['Acq'+str(acqNum)]
+    # extract the data for this acquisition
+    spec = store['Acq' + str(acqNum)]
 
-    #Call the SHO fitter for each chirp
-    extracted=shoFit(spec, acqNum, chirpMap=chirpMap, grid=grid, lowFreq=lowFreq, highFreq=highFreq, smoothData=smooth,
-           remove_background=remove_background, fittype=fittype)
+    # Call the SHO fitter for each chirp
+    extracted = shoFit(spec, acqNum, chirpMap=chirpMap, grid=grid, lowFreq=lowFreq, highFreq=highFreq,
+                       smoothData=smooth,
+                       remove_background=remove_background, fittype=fittype)
 
     return extracted
 
-# Run shoFitAcq for an entire data set with numAcq number of acquisitions.
-def fitdataset(fftFileName,waveSpecFileName,numAcq,grid=None,low=None,high=None,smooth=False,remove_background=False,fittype='RealImag'):
 
+# Run shoFitAcq for an entire data set with numAcq number of acquisitions.
+def fitdataset(fftFileName, waveSpecFileName, numAcq, grid=None, low=None, high=None, smooth=False,
+               remove_background=False, fittype='RealImag'):
     chirpMap = generateChirpMap(waveSpecFileName)
 
     shoPartial = partial(shoFitAcq, fftFileName=fftFileName, chirpMap=chirpMap, grid=grid, lowFreq=low, highFreq=high,
-                         smooth=smooth,remove_background=remove_background, fittype=fittype)
+                         smooth=smooth, remove_background=remove_background, fittype=fittype)
 
     results = shoPartial(0)
 
@@ -475,67 +497,150 @@ def fitdataset(fftFileName,waveSpecFileName,numAcq,grid=None,low=None,high=None,
 
     return results
 
+
 def generateChirpMap(waveformSpecPath):
+    # Read in the waveform specification file
+    waveSpec = pd.read_csv(waveformSpecPath)
 
-    #Read in the waveform specification file
-    waveSpec=pd.read_csv(waveformSpecPath)
+    # Get the column labels
+    cols = waveSpec.columns.values
 
-    #Get the column labels
-    cols=waveSpec.columns.values
+    # Get the number of chirps and packets
+    numChirps = int(np.sum(waveSpec.loc[:, cols[0]].values))
+    numPackets = waveSpec.shape[0]
 
-    #Get the number of chirps and packets
-    numChirps=int(np.sum(waveSpec.loc[:,cols[0]].values))
-    numPackets=waveSpec.shape[0]
+    # initialize the chirp map
+    chirpMap = np.empty([numChirps, 6])
 
-    #initialize the chirp map
-    chirpMap=np.empty([numChirps,6])
+    # chirp couter
+    chirpCount = 0
+    prevDC = 0
 
-    #chirp couter
-    chirpCount=0
-    prevDC=0
+    for i in np.arange(0, numPackets):
 
-    for i in np.arange(0,numPackets):
+        # Get the info on the packet and the
+        packInfo = waveSpec.loc[i, :]
+        packetSize = packInfo[cols[0]]
+        dcField = packInfo[cols[1]]
+        multiplier = packInfo[cols[2]]
+        harmonic = packInfo[cols[3]]
+        plotGroup = packInfo[cols[4]]
 
-        #Get the info on the packet and the
-        packInfo=waveSpec.loc[i,:]
-        packetSize=packInfo[cols[0]]
-        dcField=packInfo[cols[1]]
-        multiplier=packInfo[cols[2]]
-        harmonic=packInfo[cols[3]]
-        plotGroup=packInfo[cols[4]]
+        # For each chirp in the packet
+        for j in np.arange(0, packetSize):
 
-        #For each chirp in the packet
-        for j in np.arange(0,packetSize):
+            currentRow = int(j + chirpCount)
 
-            currentRow=int(j+chirpCount)
+            chirpMap[currentRow, 0] = i
+            chirpMap[currentRow, 1] = plotGroup
+            chirpMap[currentRow, 2] = harmonic
+            chirpMap[currentRow, 5] = multiplier
 
-            chirpMap[currentRow,0]=i
-            chirpMap[currentRow,1]=plotGroup
-            chirpMap[currentRow,2]=harmonic
-            chirpMap[currentRow,5]=multiplier
-
-            #If out of field
+            # If out of field
             if dcField == 0:
-                chirpMap[currentRow,3]=0
-                chirpMap[currentRow,4]=prevDC
+                chirpMap[currentRow, 3] = 0
+                chirpMap[currentRow, 4] = prevDC
             else:
-                chirpMap[currentRow,3]=1
-                chirpMap[currentRow,4]=dcField
-                prevDC=dcField
+                chirpMap[currentRow, 3] = 1
+                chirpMap[currentRow, 4] = dcField
+                prevDC = dcField
 
+        # Keep track of the number of chirps
+        chirpCount = chirpCount + packetSize
 
-
-        #Keep track of the number of chirps
-        chirpCount=chirpCount+packetSize
-
-    #Then get the row labels
-    chirps=np.repeat('Chirp',numChirps)
-    numbers=np.arange(1,numChirps+1)
-    numbers = list(map(str,numbers))
-    comb=list(zip(chirps,numbers))
+    # Then get the row labels
+    chirps = np.repeat('Chirp', numChirps)
+    numbers = np.arange(1, numChirps + 1)
+    numbers = list(map(str, numbers))
+    comb = list(zip(chirps, numbers))
     joined_data = (''.join(w) for w in comb)
-    rows=list(joined_data)
+    rows = list(joined_data)
 
-    finalMap = pd.DataFrame(chirpMap, index=np.arange(0,numChirps), columns=['Packet','PlotGroup', 'Harmonic', 'InOut', 'DC', 'Multiplier'])
+    finalMap = pd.DataFrame(chirpMap, index=np.arange(0, numChirps),
+                            columns=['Packet', 'PlotGroup', 'Harmonic', 'InOut', 'DC', 'Multiplier'])
 
     return finalMap
+
+
+def redo_fitting_chirp(fftFileName, waveSpecFileName, numAcq, chirpnum, report=False, plot=False,
+                       low=None, high=None, smooth=False, remove_background=False, fittype='RealImag'):
+    # Get a path to the fft information
+    store = pd.HDFStore(fftFileName)
+
+    chirpMap = generateChirpMap(waveSpecFileName)
+
+    # extract the data for this acquisition
+    spec = store['Acq' + str(numAcq)]
+
+    results = fitChirp(spec, low, high, chirpMap=chirpMap, remove_background=remove_background, smoothData=smooth,
+                       numAcq=numAcq, chirp=chirpnum, fittype=fittype, print_report=report)
+
+    if plot:
+        plot_chirp_redo(results, chirpnum, spec,fittype=fittype)
+
+    return results
+
+def plot_chirp_redo(results, chirpnum, spec, fittype='RealImag'):
+
+    A, Ph, Res, Q = results[6:10]
+
+    chirpData=signal.detrend(spec.xs(chirpnum))
+    amp = np.abs(chirpData)
+    phase = np.angle(chirpData)
+    freq=spec.xs(chirpnum).index.values
+
+    if fittype is 'RealImag':
+        fitted = complexGaus(freq,A,Ph,Res,Q)
+        fitted_amp = np.abs(fitted)
+        fitted_angle = np.angle(fitted)
+
+        fig, ax1 = plt.subplots(figsize = (8,8))
+
+        color = 'tab:red'
+        ax1.set_xlabel('Freq (Hz)')
+        ax1.set_ylabel('Amp (V)',color=color)
+        ax1.plot(freq, amp, '-',color=color)
+        ax1.plot(freq,fitted_amp/1e6, '--k')
+        ax1.tick_params(axis='y', labelcolor=color)
+
+        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+        color = 'tab:blue'
+        ax2.set_ylabel('Phase', color=color)  # we already handled the x-label with ax1
+        ax2.plot(freq, phase, '-', color=color)
+        ax2.plot(freq,fitted_angle, '--k')
+
+        fig.tight_layout(pad=3.0)  # otherwise the right y-label is slightly clipped
+        plt.show()
+
+        fig, ax1 = plt.subplots(figsize = (8,8))
+
+        color = 'tab:red'
+        ax1.set_xlabel('Freq (Hz)')
+        ax1.set_ylabel('Acos(Phi) AKA Real',color=color)
+        #ax1.plot(freq, signal.detrend(amp*np.cos(phase)), '.',color=color)
+        ax1.plot(freq, chirpData, '.',color=color)
+        ax1.plot(freq,(np.abs(fitted)/1e6)*np.cos(fitted_angle),'--',color='orange')
+        ax1.tick_params(axis='y', labelcolor=color)
+
+    else:
+        fitted_amp = complexGausAmp(freq,A,Res,Q)
+
+        fig, ax1 = plt.subplots(figsize = (8,8))
+
+        color = 'tab:red'
+        ax1.set_xlabel('Freq (Hz)')
+        ax1.set_ylabel('Amp (V)',color=color)
+        ax1.plot(freq, amp, '-',color=color)
+        ax1.plot(freq,fitted_amp/1e6, '--k')
+        ax1.tick_params(axis='y', labelcolor=color)
+
+        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+        color = 'tab:blue'
+        ax2.set_ylabel('Phase', color=color)  # we already handled the x-label with ax1
+        ax2.plot(freq, phase, '-', color=color)
+        ax2.plot(freq,np.repeat(Ph,len(freq)), '--k')
+
+        fig.tight_layout(pad=3.0)  # otherwise the right y-label is slightly clipped
+        plt.show()
