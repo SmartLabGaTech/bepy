@@ -406,8 +406,12 @@ class GridMeasurement(BaseMeasurement):
         return outdata
 
     def add_rc(self):
-        self._data['r'] = pd.Series(np.sort(np.tile(np.arange(self._gridSize), self._gridSize)), index=self._data.index)
-        self._data['c'] = pd.Series(np.tile(np.arange(self._gridSize), self._gridSize), index=self._data.index)
+        try:
+            self._data['r'] = pd.Series(np.sort(np.tile(np.arange(self._gridSize), self._gridSize)), index=self._data.index)
+            self._data['c'] = pd.Series(np.tile(np.arange(self._gridSize), self._gridSize), index=self._data.index)
+        except ValueError:
+            self._data['r'] = np.repeat(np.nan, len(self._data.index))
+            self._data['c'] = np.repeat(np.nan, len(self._data.index))
 
     def split_loop(self, index, loop_start=0, loop_end=-2, inout=0, stack='PR'):
         v = self.GetDataSubset(inout=inout, stack=stack).columns.get_level_values(3).values[loop_start:loop_end + 1]

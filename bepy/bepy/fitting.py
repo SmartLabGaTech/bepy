@@ -7,6 +7,7 @@ import scipy.signal as signal
 from lmfit import Model, Parameters, minimize
 import lmfit as lm
 from functools import partial
+from multiprocessing import Pool
 import sys
 
 
@@ -333,23 +334,11 @@ def limFitData(data, freq, low, high):
 #   chirp: the chirp number to fit
 #   fittype: Fit the real and imaginary data ('RealImag') or the amplitude data ('Amp')
 def fitChirp(acqData, lowFreq, highFreq, chirpMap=None, remove_background=False, smoothData=False, numAcq=0, chirp=0,
-             fittype='RealImag', print_report=False):
+             fittype='RealImag', print_report=False, skip_pg=9.0):
+
     # Extract chirp and freq axis
     chirpData = acqData.xs(chirp)
-
-    flag = 0
-    msg = 0
-
-    phaseAdjust = False
-
     freq = chirpData.index.values
-
-    # Scale data to uV
-    chirpData = (10 ** 6) * chirpData.values
-
-    # You can specify if you want to smooth the data prior to fitting
-    if smoothData:
-        chirpData, freq = smoothChirp(chirpData, freq)
 
     # Set up the data entry for this chirp/acq
     # See the ppt for the analysis overview for more
@@ -366,33 +355,50 @@ def fitChirp(acqData, lowFreq, highFreq, chirpMap=None, remove_background=False,
         info = chirpMap.loc[chirp - 1, :]
         freq = np.multiply(freq, info['Harmonic'])
 
-    # YOu can specify if you want to remove a linear curve from the data
-    if remove_background:
-        chirpData = remove_linear(chirpData)
+    if info['PlotGroup'] == skip_pg:
+        data = [info['Packet'], info['PlotGroup'], info['Harmonic'], info['InOut'], info['DC'], info['Multiplier'],
+                np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
+    else:
 
-    # Get a guess for the SHO fit
-    xGuess = getSHOguess(chirpData, freq)
-    xGuess = np.array(xGuess, dtype='float64')
+        flag = 0
+        msg = 0
 
-    # Try to trim the data then fit, if it is a particularly bad response this will fail
-    # In that case, just fit the entire data
-    trimData, freqData, failed = attempt_trim(chirpData, freq, lowFreq, highFreq)
+        phaseAdjust = False
 
-    # If the trimming failed, note it
-    if failed:
-        flag = 2
-        msg = 'Trimming Failed'
+        # Scale data to uV
+        chirpData = (10 ** 6) * chirpData.values
 
-    # Perform the fit
-    pfit, perr, failed_fit, fail_msg, iterations = performFit(trimData, freqData, xGuess, fittype, numAcq, chirp,
-                                                              print_report)
+        # You can specify if you want to smooth the data prior to fitting
+        if smoothData:
+            chirpData, freq = smoothChirp(chirpData, freq)
 
-    if failed_fit:
-        flag = 1
-        msg = fail_msg
+        # YOu can specify if you want to remove a linear curve from the data
+        if remove_background:
+            chirpData = remove_linear(chirpData)
 
-    data = [info['Packet'], info['PlotGroup'], info['Harmonic'], info['InOut'], info['DC'], info['Multiplier'], pfit[0],
-            pfit[1], pfit[2], pfit[3], perr[0], perr[1], perr[2], perr[3], iterations, flag, msg]
+        # Get a guess for the SHO fit
+        xGuess = getSHOguess(chirpData, freq)
+        xGuess = np.array(xGuess, dtype='float64')
+
+        # Try to trim the data then fit, if it is a particularly bad response this will fail
+        # In that case, just fit the entire data
+        trimData, freqData, failed = attempt_trim(chirpData, freq, lowFreq, highFreq)
+
+        # If the trimming failed, note it
+        if failed:
+            flag = 2
+            msg = 'Trimming Failed'
+
+        # Perform the fit
+        pfit, perr, failed_fit, fail_msg, iterations = performFit(trimData, freqData, xGuess, fittype, numAcq, chirp,
+                                                                  print_report)
+
+        if failed_fit:
+            flag = 1
+            msg = fail_msg
+
+        data = [info['Packet'], info['PlotGroup'], info['Harmonic'], info['InOut'], info['DC'], info['Multiplier'], pfit[0],
+                pfit[1], pfit[2], pfit[3], perr[0], perr[1], perr[2], perr[3], iterations, flag, msg]
 
     return data
 
@@ -418,19 +424,16 @@ def shoFit(responseFFT, numAcq, chirpMap=None, grid=None, lowFreq=None, highFreq
     acqData = responseFFT
 
     # Initalize output data
-    outData = []
+    outData = np.full((numChirps,17),0.0)
 
     # For each chirp in acquisition
-    for chirp in chirpNames:
+    for i,chirp in enumerate(chirpNames):
 
         data = fitChirp(acqData, lowFreq, highFreq, chirpMap=chirpMap, remove_background=remove_background,
                         smoothData=smoothData,
                         numAcq=numAcq, chirp=chirp, fittype=fittype, print_report=False)
 
-        try:
-            outData = np.vstack([outData, data])
-        except:
-            outData = data
+        outData[i,:] = data
 
     # Then get the column labels
     indexChirps = chirpNames.values
@@ -488,15 +491,65 @@ def fitdataset(fftFileName, waveSpecFileName, numAcq, grid=None, low=None, high=
     shoPartial = partial(shoFitAcq, fftFileName=fftFileName, chirpMap=chirpMap, grid=grid, lowFreq=low, highFreq=high,
                          smooth=smooth, remove_background=remove_background, fittype=fittype)
 
-    results = shoPartial(0)
+    numChirps = chirpMap.shape[0]
 
-    for i in np.arange(1, numAcq):
+    acq_array = np.repeat(np.arange(0,numAcq), numChirps)
+    chirp_array = np.tile(np.arange(0,numChirps), numAcq)
+
+    index = pd.MultiIndex.from_arrays([acq_array,chirp_array], names=['Acq','ChirpNum'])
+    columns = pd.Index(['Packet', 'PlotGroup', 'Harmonic', 'InOut', 'DC', 'Multiplier', 'Amp', 'Phase', 'Res', 'Q',
+                        'errA', 'errP','errRes', 'errQ', 'Iter', 'Flag', 'Msg'], names=['Values'])
+
+    results_size = (len(index),len(columns))
+
+    results = pd.DataFrame(np.full(results_size,-1), index=index, columns=columns)
+
+    #results = shoPartial(0)
+
+    for i in np.arange(0, numAcq):
         res = shoPartial(i)
-        results = pd.concat([results, res], axis=0)
+        #results = pd.concat([results, res], axis=0)
+        results.loc[i] = res
         sys.stderr.write('\rdone {0:%}'.format(i / numAcq))
 
     return results
 
+def parallel_fitfunc(acqNum, fftFileName, result_df, chirpMap=None, grid=None, lowFreq=None, highFreq=None, smooth=None,
+                    remove_background=False, fittype='RealImag'):
+
+    res = shoFitAcq(acqNum, fftFileName, chirpMap=chirpMap, grid=grid, lowFreq=lowFreq, highFreq=highFreq, smooth=smooth,
+                    remove_background=remove_background, fittype=fittype)
+    result_df.loc[acqNum] = res
+
+def parallel_fitdataset(fftFileName, waveSpecFileName, numAcq, grid=None, low=None, high=None, smooth=False,
+                        remove_background=False, fittype='RealImag', num_process=8):
+
+    chirpMap = generateChirpMap(waveSpecFileName)
+
+    numChirps = chirpMap.shape[0]
+
+    acq_array = np.repeat(np.arange(0, numAcq), numChirps)
+    chirp_array = np.tile(np.arange(0, numChirps), numAcq)
+
+    index = pd.MultiIndex.from_arrays([acq_array, chirp_array], names=['Acq', 'ChirpNum'])
+    columns = pd.Index(['Packet', 'PlotGroup', 'Harmonic', 'InOut', 'DC', 'Multiplier', 'Amp', 'Phase', 'Res', 'Q',
+                        'errA', 'errP', 'errRes', 'errQ', 'Iter', 'Flag', 'Msg'], names=['Values'])
+
+    results_size = (len(index), len(columns))
+
+    results = pd.DataFrame(np.full(results_size, -1), index=index, columns=columns)
+
+    parallelPartial = partial(parallel_fitfunc, fftFileName=fftFileName, result_df=results, chirpMap=chirpMap,
+                              grid=grid, lowFreq=low, highFreq=high, smooth=smooth, remove_background=remove_background,
+                              fittype=fittype)
+
+    if __name__ == '__main__':
+
+        pool = Pool(num_process)
+        for i, _ in enumerate(pool.imap_unordered(parallelPartial,np.arange(0,numAcq))):
+            sys.stderr.write('\rdone {0:%}'.format(i/(numAcq-1)))
+
+    return results
 
 def generateChirpMap(waveformSpecPath):
     # Read in the waveform specification file

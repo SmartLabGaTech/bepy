@@ -62,21 +62,24 @@ class Sample:
         self._meas_acq_flags[measType] = meas_flags
 
     def addentiresample(self, path, gridSize=50, adjustphase=True):
-
         for folder in next(os.walk(path))[1]:
-
             direc = Path(path+folder)
-
             if os.path.isfile(direc / 'shofit.csv'):
                 parameters = pd.read_csv(direc / 'parameters.csv', header=None, index_col=0)
-
                 try:
                     measType = parameters.T['Measurement Type'].values[0]
+                except KeyError:
+                    try:
+                        measType = parameters.T['Measurement Type '].values[0]
+                    except KeyError:
+                        raise KeyError('Cannot Obtain Measurement Type ')
+                try:
                     measName = parameters.T['Measurement Name'].values[0]
                 except KeyError:
-                    measType = 'Grid'
-                    measName = 'Fail'
-
+                    try:
+                        measName = parameters.T['Measurement Name '].values[0]
+                    except KeyError:
+                        raise KeyError('Cannot Obtain Measurement Name: ')
             self.addmeasurement(direc, measType=measType, measName=measName, gridSize=gridSize, adjustphase=adjustphase)
 
     def GetMeasStack(self, measstack = None, varstack = ['Amp', 'Phase', 'Res', 'Q'], inout=0.0, plotGroup=None,
