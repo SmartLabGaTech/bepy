@@ -1,2 +1,2 @@
 # bepy
-A framework for materials characterization data collected via Band Excitation Piezoresponse Force Microscopy (BE-PFM) that facilitates post collection analysis
+A framework for materials characterization data collected via Resontant Piezoresponse Force Microscopy (R-PFM) that facilitates post collection analysis
