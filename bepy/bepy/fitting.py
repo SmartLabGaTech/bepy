@@ -1,10 +1,6 @@
 #####Standard packages we import for use in most code
-import sklearn as sklearn
 import numpy as np  # for numerical operations
 import pandas as pd  # for data reading/structure
-import matplotlib.pyplot as plt  # Used for plotting
-import matplotlib.gridspec as gridspec
-import bepy as be  # for loading R-pfm data
 import scipy.signal as signal
 import scipy.io
 from scipy.signal import argrelextrema
@@ -17,20 +13,6 @@ from tqdm.notebook import tqdm
 from tqdm.contrib import tenumerate
 from statsmodels.stats.weightstats import DescrStatsW
 from scipy import stats
-
-#####Define some global Plotting Parameters
-plt.rcParams["font.size"] = 14
-plt.rcParams["axes.linewidth"] = 1.15
-plt.rcParams["lines.linewidth"] = 1.50
-plt.rcParams["font.sans-serif"] = "Arial"
-plt.rcParams["xtick.direction"] = "in"
-plt.rcParams["ytick.direction"] = "in"
-plt.rcParams["ytick.labelsize"] = "small"
-plt.rcParams["xtick.labelsize"] = "small"
-plt.rcParams["xtick.major.size"] = 2.5
-plt.rcParams["ytick.major.size"] = 2.5
-plt.rcParams["lines.markersize"] = 5.0
-#%matplotlib notebook
 
 
 ##### SHO Fitting Functions
