@@ -655,8 +655,7 @@ def shoFit(
     )
 
     # Initalize output data
-    results_size = (len(index), len(columns))
-    outData = pd.DataFrame(np.full(results_size, -1), index=index, columns=columns, dtype="float64")
+    outData = pd.DataFrame(np.full((len(index), len(columns)), -1), index=index, columns=columns, dtype="float64")
 
     if break_chirp is None:
         # For each chirp in acquisition
@@ -764,7 +763,7 @@ def shoFitAcq(
         ]
         export_df = pd.DataFrame(index=raw_df.index, columns=raw_df.columns, dtype="float64")
         ####Find outliers based on Q error or failed fits
-        mask = find_outliers_Q(df, errQ_Ratio)
+        mask = find_outliers_Q(extracted, errQ_Ratio)
         for pnt, chirp in raw_df.index:
             A, Ph, Res, Q, errQ = extracted.loc[(pnt, chirp), ["Amp", "Phase", "Res", "Q", "errQ"]].values
             fit = complexGaus(raw_df.columns.values, A, Ph, Res, Q)
@@ -782,6 +781,7 @@ def shoFitAcq(
         recon_dict = {
             "Real": pd.DataFrame(np.real(export_df), index=raw_df.index, columns=raw_df.columns),
             "Im": pd.DataFrame(np.imag(export_df), index=raw_df.index, columns=raw_df.columns),
+            "SHO": extracted, index=extracted.index, columns=extracted.columns)
         }
         ####Export to CSV
         for (key, df_) in list(recon_dict.items()):
