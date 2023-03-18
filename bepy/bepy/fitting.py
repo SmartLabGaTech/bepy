@@ -1,6 +1,10 @@
 #####Standard packages we import for use in most code
+import sklearn as sklearn
 import numpy as np  # for numerical operations
 import pandas as pd  # for data reading/structure
+import matplotlib.pyplot as plt  # Used for plotting
+import matplotlib.gridspec as gridspec
+import bepy as be  # for loading R-pfm data
 import scipy.signal as signal
 import scipy.io
 from scipy.signal import argrelextrema
@@ -13,6 +17,20 @@ from tqdm.notebook import tqdm
 from tqdm.contrib import tenumerate
 from statsmodels.stats.weightstats import DescrStatsW
 from scipy import stats
+
+#####Define some global Plotting Parameters
+plt.rcParams["font.size"] = 14
+plt.rcParams["axes.linewidth"] = 1.15
+plt.rcParams["lines.linewidth"] = 1.50
+plt.rcParams["font.sans-serif"] = "Arial"
+plt.rcParams["xtick.direction"] = "in"
+plt.rcParams["ytick.direction"] = "in"
+plt.rcParams["ytick.labelsize"] = "small"
+plt.rcParams["xtick.labelsize"] = "small"
+plt.rcParams["xtick.major.size"] = 2.5
+plt.rcParams["ytick.major.size"] = 2.5
+plt.rcParams["lines.markersize"] = 5.0
+#%matplotlib notebook
 
 
 ##### SHO Fitting Functions
@@ -610,7 +628,7 @@ def shoFit(
     acqData = responseFFT
 
     # Get the names of the chirps
-    chirps = responseFFT.index.get_level_values(0)
+    chirps = chirpMap[chirpMap["PlotGroup"] != 9].index[:-1]
     chirpNames = chirps.unique()
     numChirps = len(chirpNames)
 
@@ -618,19 +636,19 @@ def shoFit(
     indexChirps = chirpNames.values
     acqArray = np.repeat(acqNum, len(indexChirps))
 
-    if grid is None:
-        acqArray = np.repeat(acqNum, len(indexChirps))
-    elif grid != 0:
-        line = acqNum // grid
+    #     if grid is None:
+    #         acqArray = np.repeat(acqNum, len(indexChirps))
+    #     elif grid != 0:
+    #         line = acqNum // grid
 
-        if np.mod(line, 2):
-            newAcq = (1 + 2 * line) * grid - acqNum - 1
-        else:
-            newAcq = acqNum
+    #         if np.mod(line, 2):
+    #             newAcq = (1 + 2 * line) * grid - acqNum - 1
+    #         else:
+    #             newAcq = acqNum
 
-        acqArray = np.repeat(newAcq, len(indexChirps))
-    else:
-        acqArray = np.repeat(acqNum, len(indexChirps))
+    #         acqArray = np.repeat(newAcq, len(indexChirps))
+    #     else:
+    #         acqArray = np.repeat(acqNum, len(indexChirps))
 
     # Get the multi index from the products of these two
     index = pd.MultiIndex.from_arrays([acqArray, indexChirps], names=["Acq", "ChirpNum"])
@@ -655,7 +673,8 @@ def shoFit(
     )
 
     # Initalize output data
-    outData = pd.DataFrame(np.full((len(index), len(columns)), -1), index=index, columns=columns, dtype="float64")
+    results_size = (len(index), len(columns))
+    outData = pd.DataFrame(np.full(results_size, -1), index=index, columns=columns, dtype="float64")
 
     if break_chirp is None:
         # For each chirp in acquisition
@@ -740,7 +759,7 @@ def shoFitAcq(
     # extract the data for this acquisition
     spec = store["Acq" + str(acqNum)]
 
-    extracted = shoFit(
+    extracted = be.shoFit(
         spec,
         acqNum,
         chirpMap=chirpMap,
@@ -753,42 +772,87 @@ def shoFitAcq(
 
     if exportPath is not None:
         ######Grab the raw complex values data and create new datafame for reconstructions
-        raw_df = chirp_df(fftFileName, AcqNum)
-        raw_df = raw_df.loc[
-            keep[0] :,
+        raw_df = spec.loc[
+            keepFirst[0] :,
             np.logical_and(
-                raw_df.columns.values <= highFreq,
-                raw_df.columns.values >= lowFreq,
+                spec.columns.values <= highFreq,
+                spec.columns.values >= lowFreq,
             ),
         ]
         export_df = pd.DataFrame(index=raw_df.index, columns=raw_df.columns, dtype="float64")
         ####Find outliers based on Q error or failed fits
         mask = find_outliers_Q(extracted, errQ_Ratio)
-        for pnt, chirp in raw_df.index:
-            A, Ph, Res, Q, errQ = extracted.loc[(pnt, chirp), ["Amp", "Phase", "Res", "Q", "errQ"]].values
-            fit = complexGaus(raw_df.columns.values, A, Ph, Res, Q)
-            export_df.loc[(pnt, chirp), :] = fit
+        for chirp in raw_df.index:
+            A, Ph, Res, Q, errQ = extracted.loc[
+                (acqNum, chirp), ["Amp", "Phase", "Res", "Q", "errQ"]
+            ].values
+            fit = be.complexGaus(raw_df.columns.values, A, Ph, Res, Q)
+            export_df.loc[chirp, :] = fit
             ##### keep initial chirps in the first quarter cycle if Low SNR
             if keepFirst is not None:
                 if (errQ is None) & (chirp in keepFirst):
-                    mask.loc[(pnt, chirp)] = False
+                    mask.loc[(acqNum, chirp)] = False
                 elif ((errQ / Q) > errQ_Ratio) & (chirp in keepFirst):
-                    mask.loc[(pnt, chirp)] = False
+                    mask.loc[(acqNum, chirp)] = False
 
         ####Remove unreliable chirps
-        export_df[mask.values] = np.nan + 1j * np.nan
+        export_df[mask.loc[(acqNum, keepFirst[0]) :].values] = np.nan + 1j * np.nan
         # Export out puts in fit_pnt dictionary
         recon_dict = {
             "Real": pd.DataFrame(np.real(export_df), index=raw_df.index, columns=raw_df.columns),
             "Im": pd.DataFrame(np.imag(export_df), index=raw_df.index, columns=raw_df.columns),
-            "SHO": extracted, index=extracted.index, columns=extracted.columns)
         }
         ####Export to CSV
         for (key, df_) in list(recon_dict.items()):
-            save_temp = savePath + "Loc_" + str(pnt) + "_" + key + ".csv"
+            save_temp = exportPath + "Loc_" + str(acqNum) + "_" + key + ".csv"
             df_.to_csv(save_temp, index=[0, 1])
 
     return extracted
+
+
+def SHO_BayeSMG(
+    fftFileName,
+    acqNum,
+    UQ_path,
+    copyNum,
+    chirpMap=None,
+    grid=None,
+    lowFreq=None,
+    highFreq=None,
+    fittype="RealImag",
+):
+
+    ####Set chirps for reconstructed data index
+    chirps = chirpMap[chirpMap["PlotGroup"] != 9].index[:-1]
+    ####Set up columns
+    freq_cols = chirp_df(fftFileName,acqNum).columns
+    freq_cols = freq_cols[
+        np.logical_and(
+            freq_cols <= highFreq,
+            freq_cols.values >= lowFreq,
+        )
+    ]
+
+    #####Extract a UQ copy for sho fitting
+    im_file = "UQ_Im_"+str(acqNum)+"_copy_" + str(copyNum) + ".csv"
+    im_data = pd.read_csv(UQ_path + "\\" + im_file, header=None)
+    # ## Load completed Real data
+    real_file = "UQ_Real_"+str(acqNum)+"_copy_" + str(copyNum) + ".csv"
+    real_data = pd.read_csv(UQ_path + "\\" + real_file, header=None)
+    #####Combined for future use
+    combined = real_data.values + (1j * im_data.values)
+    df_temp = pd.DataFrame(combined, index=chirps, columns=freq_cols)
+    ####Pass copy of recovered location to SHO fitting
+    copy_df = be.shoFit(
+        responseFFT=df_temp,
+        acqNum=acqNum,
+        chirpMap=chirpMap,
+        grid=grid,
+        lowFreq=lowFreq,
+        highFreq=highFreq,
+        fittype="RealImag",
+    )
+    return copy_df
 
 
 # Run shoFitAcq for an entire data set with numAcq number of acquisitions.
@@ -819,7 +883,7 @@ def fitdataset(
         exportPath=exportPath,
         keepFirst=None,
     )
-    
+
     ####Set up the index
     numChirps = chirpMap.shape[0]
     acq_array = np.repeat(np.arange(0, numAcq), numChirps)
@@ -845,7 +909,7 @@ def fitdataset(
         ]
     )
 
-    #####Make Results Dataframe 
+    #####Make Results Dataframe
     results = pd.DataFrame(np.full((len(index), len(columns)), -1), index=index, columns=columns)
 
     for i in np.arange(0, numAcq):
@@ -879,5 +943,3 @@ def find_outliers_Q(df, err_ratio):
     #####Mask Q values equal to NAN or that have error values greater than 40% of Q value
     total_mask = np.logical_or(err_mask, err_q_null)  # True means poor SHO fit
     return total_mask
-
-
