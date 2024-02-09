@@ -49,7 +49,7 @@ class BaseMeasurement:
             
             temp_plotgroup = shodata["PlotGroup"].xs(0)
             in_out = shodata['InOut'].unstack().xs(0)
-            self._flags = shodata['Flag'].unstack()
+            #self._flags = shodata['Flag'].unstack()
 
             shodata['PR'] = np.zeros(shodata.shape[0])
             data = shodata[["Amp", "errA", "Phase", "errP", "Res", "errRes", "Q", "errQ", "PR"]].unstack()
