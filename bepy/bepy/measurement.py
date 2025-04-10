@@ -213,9 +213,9 @@ class GridMeasurement(BaseMeasurement):
         parameters = pd.read_csv(path / 'parameters.csv', header=None, index_col=0)
 
         if measType == 'SSPFM':
-            self._acqXaxis = 10*(shodata['DC'].xs(0))
+            self._acqXaxis = 15*(shodata['DC'].xs(0))
         elif measType == 'NonLin':
-            self._acqXaxis = 10*(shodata['Multiplier'].xs(0))
+            self._acqXaxis = 15*(shodata['Multiplier'].xs(0))
         elif measType == 'Relax':
             self._acqXaxis = (shodata['Multiplier'].xs(0).index)*float(parameters.xs('Chirp Duration').values[0])
         
